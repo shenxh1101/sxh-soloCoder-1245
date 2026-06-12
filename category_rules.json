@@ -1,0 +1,82 @@
+{
+  "language_folders": {
+    "zh": "中文",
+    "en": "英文",
+    "ja": "日文",
+    "ko": "韩文",
+    "fr": "法文",
+    "de": "德文",
+    "es": "西班牙文",
+    "unknown": "待处理"
+  },
+  "subcategories": {
+    "zh": {
+      "小说": {
+        "keywords": ["小说", "故事", "长篇", "短篇", "武侠", "科幻", "悬疑", "推理", "言情", "爱情", "历史", "传记", "自传", "散文", "诗歌", "文学", "名著", "经典", "童话", "寓言", "奇幻", "玄幻", "都市", "青春", "校园", "网游", "仙侠", "修真", "穿越", "重生"],
+        "priority": 1
+      },
+      "技术": {
+        "keywords": ["编程", "程序", "算法", "数据结构", "Python", "Java", "C++", "C语言", "JavaScript", "前端", "后端", "数据库", "网络", "操作系统", "Linux", "Windows", "计算机", "软件", "硬件", "AI", "人工智能", "机器学习", "深度学习", "数据分析", "大数据", "云计算", "架构", "设计模式", "源码", "实战", "指南", "教程", "入门", "精通", "权威", "手册", "黑客", "安全", "密码学", "区块链", "移动开发", "iOS", "Android", "游戏开发", "Unity", "Unreal", "Web", "HTML", "CSS", "React", "Vue", "Angular", "Node.js", "Docker", "Kubernetes", "微服务"],
+        "priority": 2
+      },
+      "社科": {
+        "keywords": ["历史", "哲学", "心理", "社会", "经济", "政治", "法律", "军事", "文化", "人类学", "社会学", "经济学", "政治学", "法学", "心理学", "管理学", "营销", "商业", "金融", "投资", "理财", "会计", "统计", "教育", "传播", "新闻", "媒体", "艺术", "美学", "宗教", "神话", "民俗", "考古", "地理", "国际关系"],
+        "priority": 3
+      },
+      "生活": {
+        "keywords": ["美食", "烹饪", "食谱", "烘焙", "养生", "健康", "健身", "运动", "瑜伽", "减肥", "美容", "护肤", "时尚", "穿搭", "家居", "装修", "园艺", "宠物", "旅行", "游记", "摄影", "手工", "DIY", "育儿", "亲子", "家庭", "情感", "人际", "沟通", "职场", "成功", "励志", "自我提升", "时间管理", "效率"],
+        "priority": 4
+      },
+      "科普": {
+        "keywords": ["科普", "科学", "物理", "化学", "生物", "数学", "天文", "地理", "医学", "人体", "自然", "环境", "生态", "进化", "基因", "量子", "相对论", "宇宙", "时间", "空间", "科技", "发明", "探索", "百科全书", "十万个为什么"],
+        "priority": 5
+      }
+    },
+    "en": {
+      "Fiction": {
+        "keywords": ["novel", "fiction", "story", "tale", "romance", "mystery", "thriller", "sci-fi", "science fiction", "fantasy", "horror", "adventure", "history", "biography", "autobiography", "memoir", "poetry", "literary", "classics", "fairy tale", "mythology", "young adult", "ya", "children", "short stories"],
+        "priority": 1
+      },
+      "Technology": {
+        "keywords": ["programming", "program", "algorithm", "data structure", "python", "java", "c++", "javascript", "frontend", "backend", "database", "network", "operating system", "linux", "windows", "computer", "software", "hardware", "artificial intelligence", "ai", "machine learning", "deep learning", "data analysis", "big data", "cloud", "architecture", "design pattern", "source code", "practical", "guide", "tutorial", "beginner", "mastering", "definitive", "handbook", "hacking", "security", "cryptography", "blockchain", "mobile development", "ios", "android", "game development", "unity", "unreal", "web", "html", "css", "react", "vue", "angular", "node.js", "docker", "kubernetes", "microservices"],
+        "priority": 2
+      },
+      "Social Science": {
+        "keywords": ["history", "philosophy", "psychology", "sociology", "economics", "politics", "law", "military", "culture", "anthropology", "political science", "management", "marketing", "business", "finance", "investment", "accounting", "statistics", "education", "communication", "journalism", "media", "art", "aesthetics", "religion", "mythology", "folklore", "archaeology", "geography", "international relations"],
+        "priority": 3
+      },
+      "Lifestyle": {
+        "keywords": ["cooking", "cookbook", "recipe", "baking", "health", "fitness", "exercise", "yoga", "weight loss", "beauty", "skincare", "fashion", "home", "decor", "gardening", "pet", "travel", "photography", "craft", "diy", "parenting", "family", "relationship", "communication", "career", "success", "motivation", "self-help", "self-improvement", "time management", "productivity"],
+        "priority": 4
+      },
+      "Science": {
+        "keywords": ["popular science", "science", "physics", "chemistry", "biology", "mathematics", "astronomy", "geography", "medicine", "human body", "nature", "environment", "ecology", "evolution", "genetics", "quantum", "relativity", "universe", "space", "time", "technology", "invention", "exploration", "encyclopedia"],
+        "priority": 5
+      }
+    },
+    "ja": {
+      "小説": {
+        "keywords": ["小説", "物語", "長編", "短編", "ミステリー", "サスペンス", "ファンタジー", "恋愛", "ライトノベル", "ラノベ", "歴史", "伝記", "自伝", "詩", "文学", "古典", "名作", "童話", "神話", "青春", "推理"],
+        "priority": 1
+      },
+      "技術": {
+        "keywords": ["プログラミング", "プログラム", "アルゴリズム", "データ構造", "Python", "Java", "C言語", "JavaScript", "フロントエンド", "バックエンド", "データベース", "ネットワーク", "OS", "Linux", "Windows", "コンピュータ", "ソフトウェア", "ハードウェア", "AI", "人工知能", "機械学習", "データ分析", "クラウド", "アーキテクチャ", "デザインパターン", "実践", "ガイド", "チュートリアル", "入門", "精通", "ハンドブック", "セキュリティ", "暗号", "ブロックチェーン", "スマホアプリ", "iOS", "Android", "ゲーム開発", "Unity", "Web", "HTML", "CSS", "React", "Vue", "Docker"],
+        "priority": 2
+      },
+      "教養": {
+        "keywords": ["歴史", "哲学", "心理学", "社会学", "経済学", "政治学", "法律", "軍事", "文化", "人類学", "経営学", "マーケティング", "ビジネス", "金融", "投資", "会計", "統計学", "教育学", "コミュニケーション", "ジャーナリズム", "メディア", "芸術", "美学", "宗教", "神話", "民俗学", "考古学", "地理", "国際関係"],
+        "priority": 3
+      },
+      "生活": {
+        "keywords": ["料理", "レシピ", "ベーキング", "健康", "フィットネス", "運動", "ヨガ", "ダイエット", "美容", "スキンケア", "ファッション", "インテリア", "ガーデニング", "ペット", "旅行", "写真", "ハンドメイド", "DIY", "子育て", "家族", "人間関係", "コミュニケーション", "仕事術", "成功", "自己啓発", "時間管理", "生産性"],
+        "priority": 4
+      },
+      "科学": {
+        "keywords": ["科学", "物理", "化学", "生物", "数学", "天文学", "地理学", "医学", "人体", "自然", "環境", "生態", "進化", "遺伝子", "量子", "相対性理論", "宇宙", "テクノロジー", "発明", "探検", "百科事典"],
+        "priority": 5
+      }
+    }
+  },
+  "default_category": "其他",
+  "text_detection_chars": 2000
+}

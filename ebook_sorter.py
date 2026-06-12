@@ -8,6 +8,7 @@
 import os
 import sys
 import json
+import csv
 import shutil
 import argparse
 import zipfile
@@ -16,6 +17,8 @@ import hashlib
 from pathlib import Path
 from collections import defaultdict
 from datetime import datetime
+from dataclasses import dataclass, field, asdict
+from typing import List, Dict, Optional, Tuple
 
 try:
     from PyPDF2 import PdfReader
@@ -38,26 +41,38 @@ except ImportError:
 
 
 SUPPORTED_EXTENSIONS = {'.epub', '.pdf', '.mobi'}
+CONFLICT_SKIP = 'skip'
+CONFLICT_OVERWRITE = 'overwrite'
+CONFLICT_RENAME = 'rename'
+VALID_CONFLICT_STRATEGIES = [CONFLICT_SKIP, CONFLICT_OVERWRITE, CONFLICT_RENAME]
 
 
+@dataclass
 class BookMetadata:
     """电子书元数据"""
-    def __init__(self):
-        self.title = ''
-        self.author = ''
-        self.language = ''
-        self.publisher = ''
-        self.pub_date = ''
-        self.description = ''
-        self.cover_image = None  # bytes
-        self.cover_ext = '.jpg'
-        self.file_path = ''
-        self.file_size = 0
-        self.file_type = ''
-        self.detected_language = ''
-        self.language_confidence = 0
-        self.category = ''
-        self.target_path = ''
+    title: str = ''
+    author: str = ''
+    language: str = ''
+    publisher: str = ''
+    pub_date: str = ''
+    description: str = ''
+    cover_image: Optional[bytes] = None
+    cover_ext: str = '.jpg'
+    file_path: str = ''
+    file_size: int = 0
+    file_type: str = ''
+    detected_language: str = ''
+    language_confidence: float = 0.0
+    category: str = ''
+    category_confidence: float = 0.0
+    target_path: str = ''
+    move_status: str = 'pending'
+    conflict_status: str = 'none'
+    error_msg: str = ''
+    text_preview: str = ''
+    language_sources: Dict[str, Tuple[str, float]] = field(default_factory=dict)
+    thumb_filename: str = ''
+    md5_hash: str = ''
 
 
 def detect_language_by_chars(text):
@@ -115,10 +130,114 @@ def detect_language_by_chars(text):
 
 
 def detect_language_by_filename(filename):
-    """通过文件名猜测语言"""
+    """通过文件名猜测语言（权重较低）"""
     name = Path(filename).stem
     lang, conf = detect_language_by_chars(name)
     return (lang, conf)
+
+
+def _has_cjk_chars(text):
+    """检测文本中是否含有中日韩字符"""
+    if not text:
+        return False
+    for ch in text:
+        # CJK统一表意文字, 日文平假名片假名, 韩文
+        if ('\u4e00' <= ch <= '\u9fff' or '\u3400' <= ch <= '\u4dbf'
+                or '\u3040' <= ch <= '\u30ff' or '\u30a0' <= ch <= '\u30ff'
+                or '\uac00' <= ch <= '\ud7af' or '\u1100' <= ch <= '\u11ff'):
+            return True
+    return False
+
+
+def detect_book_language(meta, text_detection_chars=2000):
+    """
+    综合判断书籍语言
+    
+    改进策略：
+    1. 元数据中的language字段高权重参考
+    2. 文件名/标题仅作参考，权重很低（避免英文文件名误导）
+    3. 对于CJK字符出现的情况，立即提升优先级
+    4. **强制**正文采样：如果初判结果是en，必须再抽样正文交叉验证
+    5. 只要正文/简介/标题中发现CJK字符，优先判断为对应CJK语言
+    """
+    lang_sources = {}
+    has_cjk_anywhere = False
+
+    combined_short_text = " ".join(filter(None, [
+        meta.title,
+        meta.description,
+        os.path.splitext(os.path.basename(meta.file_path))[0]
+    ]))
+    if _has_cjk_chars(combined_short_text):
+        has_cjk_anywhere = True
+
+    if meta.language:
+        lang_sources['metadata'] = (meta.language, 0.8)
+
+    filename_lang, filename_conf = detect_language_by_filename(os.path.basename(meta.file_path))
+    if filename_lang != 'unknown':
+        weight = 0.15 if filename_lang == 'en' else 0.3
+        lang_sources['filename'] = (filename_lang, filename_conf * weight)
+
+    if meta.title:
+        title_lang, title_conf = detect_language_by_chars(meta.title)
+        if title_lang != 'unknown':
+            weight = 0.35 if title_lang == 'en' else 0.6
+            lang_sources['title'] = (title_lang, title_conf * weight)
+
+    if meta.description:
+        desc_lang, desc_conf = detect_language_by_chars(meta.description)
+        if desc_lang != 'unknown':
+            weight = 0.6 if desc_lang == 'en' else 0.85
+            lang_sources['description'] = (desc_lang, desc_conf * weight)
+
+    text = None
+    needs_text_verification = True
+
+    pre_check_candidates = list(lang_sources.values())
+    if pre_check_candidates:
+        temp_scores = defaultdict(float)
+        for l, c in pre_check_candidates:
+            temp_scores[l] += c
+        top_lang = max(temp_scores, key=temp_scores.get)
+        top_score = temp_scores[top_lang]
+
+        if top_lang in {'zh', 'ja', 'ko'} and top_score > 0.5 and has_cjk_anywhere:
+            needs_text_verification = False
+
+    if needs_text_verification or has_cjk_anywhere or not lang_sources:
+        text = get_book_text_preview(meta.file_path, meta.file_type, text_detection_chars)
+        if text:
+            meta.text_preview = text[:500]
+            text_lang, text_conf = detect_language_by_chars(text)
+            if text_lang != 'unknown':
+                weight = 0.85 if text_lang == 'en' else 1.2
+                lang_sources['body_text'] = (text_lang, text_conf * weight)
+                if _has_cjk_chars(text):
+                    has_cjk_anywhere = True
+
+    if not lang_sources:
+        return ('unknown', 0)
+
+    lang_scores = defaultdict(float)
+    for src_name, (lang, conf) in lang_sources.items():
+        lang_scores[lang] += conf
+
+    if has_cjk_anywhere and 'en' in lang_scores:
+        non_cjk_score = lang_scores.pop('en', 0)
+        if non_cjk_score > 0 and not lang_scores:
+            lang_scores['en'] = non_cjk_score
+
+    if not lang_scores:
+        return ('unknown', 0)
+
+    best_lang = max(lang_scores, key=lang_scores.get)
+    best_score = lang_scores[best_lang]
+
+    for k, v in lang_sources.items():
+        meta.language_sources[k] = v
+
+    return (best_lang, round(best_score, 3))
 
 
 def read_epub_metadata(filepath):
@@ -423,30 +542,73 @@ def detect_book_language(meta, text_detection_chars=2000):
 
 
 def classify_book(meta, rules):
-    """根据规则对书籍进行子分类"""
+    """
+    根据规则对书籍进行子分类
+    
+    改进：综合文件名、书名、简介、正文片段进行分类
+    不同来源有不同权重，元数据缺失时也能通过文件名+正文推断
+    """
     lang = meta.detected_language
     if lang not in rules.get('subcategories', {}):
+        meta.category_confidence = 0.0
         return rules.get('default_category', '其他')
 
     subcategories = rules['subcategories'][lang]
     default_cat = rules.get('default_category', '其他')
 
-    search_text = f"{meta.title} {meta.description}"
+    filename_only = os.path.splitext(os.path.basename(meta.file_path))[0]
+    text_parts = [
+        (filename_only, 0.8),
+        (meta.title or '', 1.0),
+        (meta.description or '', 1.2),
+    ]
+
+    if not meta.text_preview:
+        try:
+            preview = get_book_text_preview(meta.file_path, meta.file_type, 3000)
+            meta.text_preview = preview[:500] if preview else ''
+        except Exception:
+            pass
+    if meta.text_preview:
+        text_parts.append((meta.text_preview, 1.5))
 
     category_scores = {}
+    category_hits = defaultdict(list)
+
     for cat_name, cat_info in sorted(subcategories.items(), key=lambda x: x[1].get('priority', 99)):
         keywords = cat_info.get('keywords', [])
-        score = 0
-        for keyword in keywords:
-            count = search_text.lower().count(keyword.lower())
-            if count > 0:
-                score += count * (1 / cat_info.get('priority', 1))
-        if score > 0:
-            category_scores[cat_name] = score
+        priority_weight = 1.0 / cat_info.get('priority', 1)
+        total_score = 0.0
+
+        for text, source_weight in text_parts:
+            if not text:
+                continue
+            text_lower = text.lower()
+            for keyword in keywords:
+                kw_lower = keyword.lower()
+                count = text_lower.count(kw_lower)
+                if count > 0:
+                    kw_len_weight = min(1.0, len(keyword) / 8.0) + 0.5
+                    hit_score = count * priority_weight * source_weight * kw_len_weight
+                    total_score += hit_score
+                    category_hits[cat_name].append(f"{keyword}x{count}")
+
+        if total_score > 0:
+            category_scores[cat_name] = round(total_score, 3)
 
     if category_scores:
-        return max(category_scores, key=category_scores.get)
+        sorted_cats = sorted(category_scores.items(), key=lambda x: x[1], reverse=True)
+        best_cat, best_score = sorted_cats[0]
 
+        if len(sorted_cats) > 1:
+            second_score = sorted_cats[1][1]
+            if best_score - second_score < 0.1 and second_score > 0:
+                pass
+
+        meta.category_confidence = best_score
+        return best_cat
+
+    meta.category_confidence = 0.0
     return default_cat
 
 
@@ -542,6 +704,90 @@ def print_statistics(lang_stats, rules, unprocessed):
             print(f"  - {os.path.basename(meta.file_path)} ({format_size(meta.file_size)})")
 
     print("\n" + "=" * 60)
+
+
+def export_manifest(books, output_dir, rules, format='both'):
+    """
+    导出整理清单（CSV和JSON格式）
+    
+    列出：原路径、新路径、识别语言、分类、置信度、失败原因
+    """
+    os.makedirs(output_dir, exist_ok=True)
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    csv_path = os.path.join(output_dir, f'整理清单_{timestamp}.csv')
+    json_path = os.path.join(output_dir, f'整理清单_{timestamp}.json')
+
+    lang_folders = rules.get('language_folders', {})
+    rows = []
+    for meta in books:
+        lang_name = lang_folders.get(meta.detected_language, meta.detected_language)
+        sources_str = '; '.join(
+            [f"{src}:{lang}({conf:.2f})" for src, (lang, conf) in meta.language_sources.items()]
+        ) if meta.language_sources else ''
+
+        row = {
+            '文件名': os.path.basename(meta.file_path),
+            '原路径': meta.file_path,
+            '新路径': meta.target_path or '',
+            '文件类型': meta.file_type,
+            '文件大小': format_size(meta.file_size),
+            '识别语言': lang_name,
+            '语言代码': meta.detected_language,
+            '语言置信度': round(meta.language_confidence, 3),
+            '语言判断来源': sources_str,
+            '二级分类': meta.category,
+            '分类置信度': round(meta.category_confidence, 3),
+            '书名': meta.title or '',
+            '作者': meta.author or '',
+            '冲突状态': meta.conflict_status,
+            '移动状态': meta.move_status,
+            '错误信息': meta.error_msg,
+        }
+        rows.append(row)
+
+    exported = []
+
+    if format in ('csv', 'both'):
+        try:
+            with open(csv_path, 'w', encoding='utf-8-sig', newline='') as f:
+                if rows:
+                    writer = csv.DictWriter(f, fieldnames=list(rows[0].keys()))
+                    writer.writeheader()
+                    writer.writerows(rows)
+            exported.append(f'CSV: {csv_path}')
+        except Exception as e:
+            print(f"导出CSV清单失败: {e}")
+
+    if format in ('json', 'both'):
+        try:
+            full_data = {
+                '生成时间': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                '总数量': len(rows),
+                '文件列表': rows,
+                '统计': {
+                    '语言分布': {},
+                    '分类分布': {},
+                    '成功数量': sum(1 for m in books if m.move_status == 'success'),
+                    '跳过数量': sum(1 for m in books if m.move_status == 'skipped'),
+                    '冲突数量': sum(1 for m in books if m.conflict_status != 'none'),
+                    '失败数量': sum(1 for m in books if m.move_status == 'failed'),
+                    '待处理数量': sum(1 for m in books if m.detected_language == 'unknown'),
+                }
+            }
+            for meta in books:
+                lang = meta.detected_language
+                ln = lang_folders.get(lang, lang)
+                full_data['统计']['语言分布'][ln] = full_data['统计']['语言分布'].get(ln, 0) + 1
+                if meta.category:
+                    full_data['统计']['分类分布'][meta.category] = full_data['统计']['分类分布'].get(meta.category, 0) + 1
+
+            with open(json_path, 'w', encoding='utf-8') as f:
+                json.dump(full_data, f, ensure_ascii=False, indent=2)
+            exported.append(f'JSON: {json_path}')
+        except Exception as e:
+            print(f"导出JSON清单失败: {e}")
+
+    return exported
 
 
 def save_thumbnail(meta, output_dir, size=(120, 160)):
@@ -851,11 +1097,22 @@ function showSection(id) {
     return html_path
 
 
-def move_books(books, target_dir, rules, dry_run=False):
-    """移动书籍到目标文件夹"""
+def move_books(books, target_dir, rules, dry_run=False, conflict_strategy=CONFLICT_RENAME):
+    """
+    移动书籍到目标文件夹
+    
+    冲突处理策略：
+    - skip: 跳过同名文件
+    - overwrite: 覆盖目标文件
+    - rename: 自动重命名 (默认)
+    
+    返回: (处理数量, 错误列表, 冲突列表)
+    """
     lang_folders = rules.get('language_folders', {})
-    moved_count = 0
+    processed_count = 0
     errors = []
+    conflicts = []
+    reserved_targets = set()
 
     for meta in books:
         lang = meta.detected_language
@@ -868,32 +1125,117 @@ def move_books(books, target_dir, rules, dry_run=False):
             target_subdir = os.path.join(target_dir, lang_folder, category)
 
         filename = os.path.basename(meta.file_path)
+        base_name, ext = os.path.splitext(filename)
         target_path = os.path.join(target_subdir, filename)
 
-        if os.path.abspath(meta.file_path) == os.path.abspath(target_path):
+        src_abs = os.path.abspath(meta.file_path)
+        dst_abs = os.path.abspath(target_path)
+
+        if src_abs == dst_abs:
+            meta.move_status = 'in_place'
+            meta.target_path = dst_abs
+            processed_count += 1
             continue
 
-        counter = 1
-        while os.path.exists(target_path):
-            name, ext = os.path.splitext(filename)
-            target_path = os.path.join(target_subdir, f"{name}_{counter}{ext}")
-            counter += 1
+        has_disk_conflict = os.path.exists(dst_abs)
+        has_batch_conflict = dst_abs in reserved_targets
 
-        meta.target_path = target_path
+        if has_disk_conflict or has_batch_conflict:
+            meta.conflict_status = 'conflict'
+            if conflict_strategy == CONFLICT_SKIP:
+                conflicts.append({
+                    'file': filename,
+                    'type': '目标已存在' if has_disk_conflict else '批次内冲突',
+                    'src': meta.file_path,
+                    'dst': dst_abs,
+                    'action': '跳过'
+                })
+                meta.move_status = 'skipped'
+                meta.target_path = dst_abs
+                meta.error_msg = '同名文件冲突，已跳过'
+                continue
+
+            elif conflict_strategy == CONFLICT_OVERWRITE:
+                conflicts.append({
+                    'file': filename,
+                    'type': '目标已存在' if has_disk_conflict else '批次内冲突',
+                    'src': meta.file_path,
+                    'dst': dst_abs,
+                    'action': '覆盖'
+                })
+                meta.conflict_status = 'overwrite'
+                meta.target_path = dst_abs
+
+            else:
+                counter = 1
+                final_path = dst_abs
+                while True:
+                    candidate_name = f"{base_name}_{counter}{ext}"
+                    candidate_path = os.path.join(target_subdir, candidate_name)
+                    candidate_abs = os.path.abspath(candidate_path)
+                    if not os.path.exists(candidate_abs) and candidate_abs not in reserved_targets:
+                        final_path = candidate_abs
+                        break
+                    counter += 1
+
+                conflicts.append({
+                    'file': filename,
+                    'type': '目标已存在' if has_disk_conflict else '批次内冲突',
+                    'src': meta.file_path,
+                    'dst': dst_abs,
+                    'renamed_to': os.path.basename(final_path),
+                    'action': '自动重命名'
+                })
+                target_path = final_path
+                meta.conflict_status = 'renamed'
+                meta.target_path = target_path
+        else:
+            meta.conflict_status = 'none'
+            meta.target_path = dst_abs
+
+        reserved_targets.add(os.path.abspath(meta.target_path))
 
         if dry_run:
-            print(f"[预览] {os.path.basename(meta.file_path)} -> {os.path.relpath(target_path, target_dir)}")
-            moved_count += 1
+            meta.move_status = 'planned'
+            rel_dst = os.path.relpath(meta.target_path, target_dir)
+            conflict_tag = ''
+            if meta.conflict_status == 'overwrite':
+                conflict_tag = ' [将覆盖]'
+            elif meta.conflict_status == 'renamed':
+                conflict_tag = f' [重命名: {os.path.basename(meta.target_path)}]'
+            print(f"[预览] {os.path.basename(meta.file_path)} -> {rel_dst}{conflict_tag}")
+            processed_count += 1
         else:
             try:
-                os.makedirs(target_subdir, exist_ok=True)
-                shutil.move(meta.file_path, target_path)
-                moved_count += 1
+                os.makedirs(os.path.dirname(meta.target_path), exist_ok=True)
+                if conflict_strategy == CONFLICT_OVERWRITE and os.path.exists(meta.target_path):
+                    os.remove(meta.target_path)
+                shutil.move(meta.file_path, meta.target_path)
+                meta.move_status = 'success'
+                processed_count += 1
             except Exception as e:
+                meta.move_status = 'failed'
+                meta.error_msg = str(e)
                 errors.append((meta.file_path, str(e)))
                 print(f"移动失败 {meta.file_path}: {e}")
 
-    return moved_count, errors
+    return processed_count, errors, conflicts
+
+
+def print_conflicts_summary(conflicts):
+    """打印冲突摘要"""
+    if not conflicts:
+        return
+    print(f"\n{'=' * 60}")
+    print(f"冲突文件汇总 ({len(conflicts)} 个):")
+    print("-" * 60)
+    for i, cf in enumerate(conflicts, 1):
+        print(f"  [{i}] {cf['file']}")
+        print(f"       原因: {cf['type']}")
+        print(f"       处理: {cf['action']}")
+        if cf.get('renamed_to'):
+            print(f"       重命名为: {cf['renamed_to']}")
+        print()
 
 
 def load_rules(config_path):
@@ -903,13 +1245,26 @@ def load_rules(config_path):
 
 
 def main():
-    parser = argparse.ArgumentParser(description='电子书分类整理工具')
+    parser = argparse.ArgumentParser(description='电子书分类整理工具 v2.0')
     parser.add_argument('source_dir', help='源文件夹路径')
     parser.add_argument('-o', '--output-dir', help='输出文件夹路径（默认与源文件夹相同）')
     parser.add_argument('-c', '--config', default='category_rules.json', help='分类规则配置文件路径')
     parser.add_argument('--dry-run', action='store_true', help='预览模式，不实际移动文件')
     parser.add_argument('--no-html', action='store_true', help='不生成HTML索引页')
     parser.add_argument('--no-stats', action='store_true', help='不输出统计报表')
+    parser.add_argument('--no-manifest', action='store_true', help='不导出整理清单')
+    parser.add_argument(
+        '--conflict',
+        choices=VALID_CONFLICT_STRATEGIES,
+        default=CONFLICT_RENAME,
+        help=f'同名文件冲突处理策略: skip=跳过, overwrite=覆盖, rename=自动重命名 (默认: {CONFLICT_RENAME})'
+    )
+    parser.add_argument(
+        '--manifest-format',
+        choices=['csv', 'json', 'both'],
+        default='both',
+        help='整理清单导出格式 (默认: both)'
+    )
 
     args = parser.parse_args()
 
@@ -932,9 +1287,11 @@ def main():
     text_detection_chars = rules.get('text_detection_chars', 2000)
 
     print(f"扫描文件夹: {source_dir}")
+    print(f"输出文件夹: {output_dir}")
     print(f"配置文件: {config_path}")
+    print(f"冲突策略: {args.conflict} (skip=跳过 / overwrite=覆盖 / rename=重命名)")
     if args.dry_run:
-        print("模式: 预览（不移动文件）")
+        print("⚠️  模式: 预览（不实际移动文件）")
     print()
 
     books_info = scan_books(source_dir)
@@ -951,11 +1308,19 @@ def main():
     if not HAS_PIL:
         print("提示: 未安装 Pillow，无法生成封面缩略图，可通过 pip install Pillow 安装")
 
-    print("\n正在读取元数据...")
+    print("\n正在读取元数据并检测语言/分类...")
     books_meta = []
+    low_confidence_count = 0
+    lang_mismatch_count = 0
+
     for i, (filepath, file_type) in enumerate(books_info, 1):
-        print(f"  [{i}/{len(books_info)}] {os.path.basename(filepath)}")
+        display_name = os.path.basename(filepath)
+        if len(display_name) > 50:
+            display_name = display_name[:47] + '...'
+        print(f"  [{i}/{len(books_info)}] {display_name}", end='')
+
         meta = read_metadata(filepath, file_type)
+
         lang, conf = detect_book_language(meta, text_detection_chars)
         meta.detected_language = lang
         meta.language_confidence = conf
@@ -963,32 +1328,92 @@ def main():
         category = classify_book(meta, rules)
         meta.category = category
 
+        if conf < 0.3 and lang != 'unknown':
+            low_confidence_count += 1
+
+        filename_lang, _ = detect_language_by_filename(os.path.basename(filepath))
+        if filename_lang == 'en' and lang == 'zh':
+            lang_mismatch_count += 1
+
         books_meta.append(meta)
+
+        status_parts = []
+        lang_names = {'zh': '中文', 'en': '英文', 'ja': '日文', 'ko': '韩文', 'unknown': '待识别'}
+        status_parts.append(f"语言={lang_names.get(lang, lang)}({conf:.2f})")
+        status_parts.append(f"分类={meta.category}" if meta.category_confidence > 0 else "分类=其他")
+        print(f"  [{', '.join(status_parts)}]")
 
     lang_stats, unprocessed = generate_statistics(books_meta, rules)
 
     if not args.no_stats:
         print_statistics(lang_stats, rules, unprocessed)
 
+    if low_confidence_count > 0 or lang_mismatch_count > 0:
+        print(f"\n📌 质量提示:")
+        if lang_mismatch_count > 0:
+            print(f"   - 英文文件名但内容是中文: {lang_mismatch_count} 本 (已按正文内容修正为中文分类)")
+        if low_confidence_count > 0:
+            print(f"   - 语言判断置信度较低: {low_confidence_count} 本 (建议人工复核)")
+
     if not args.no_html:
         print("\n正在生成HTML索引页...")
         html_path = generate_html_index(books_meta, rules, output_dir)
-        print(f"HTML索引页已生成: {html_path}")
+        print(f"  ✓ HTML索引页: {html_path}")
 
-    print("\n正在整理文件...")
-    moved_count, errors = move_books(books_meta, output_dir, rules, dry_run=args.dry_run)
+    print(f"\n正在整理文件（冲突策略: {args.conflict}）...")
+    moved_count, errors, conflicts = move_books(
+        books_meta, output_dir, rules,
+        dry_run=args.dry_run,
+        conflict_strategy=args.conflict
+    )
 
-    print(f"\n{'预览' if args.dry_run else '移动'}完成！")
-    print(f"  共处理: {moved_count} 个文件")
-    if errors:
-        print(f"  失败: {len(errors)} 个文件")
+    if conflicts:
+        print_conflicts_summary(conflicts)
+
+    if not args.no_manifest:
+        print("\n正在导出整理清单...")
+        exported = export_manifest(books_meta, output_dir, rules, format=args.manifest_format)
+        for exp in exported:
+            print(f"  ✓ {exp}")
+
+    print(f"\n{'═' * 60}")
+    action_label = '预览' if args.dry_run else '移动'
+    print(f"📚 整理{action_label}完成！")
+    print(f"{'─' * 60}")
+    success_count = sum(1 for m in books_meta if m.move_status in ('success', 'planned', 'in_place'))
+    skipped_count = sum(1 for m in books_meta if m.move_status == 'skipped')
+    failed_count = sum(1 for m in books_meta if m.move_status == 'failed')
+
+    print(f"  📖 扫描总数:     {len(books_meta)}")
+    print(f"  ✅ 已处理:       {success_count}")
+    if conflicts:
+        overwrite_n = sum(1 for c in conflicts if c['action'] == '覆盖')
+        rename_n = sum(1 for c in conflicts if c['action'] == '自动重命名')
+        skip_n = sum(1 for c in conflicts if c['action'] == '跳过')
+        parts = []
+        if overwrite_n:
+            parts.append(f"覆盖{overwrite_n}")
+        if rename_n:
+            parts.append(f"重命名{rename_n}")
+        if skip_n:
+            parts.append(f"跳过{skip_n}")
+        print(f"  ⚠️  冲突数量:     {len(conflicts)} ({', '.join(parts)})")
+    if skipped_count:
+        print(f"  ⏭️  已跳过:       {skipped_count}")
+    if failed_count:
+        print(f"  ❌ 失败数量:     {failed_count}")
     if unprocessed:
-        print(f"  待处理（无法识别语言）: {len(unprocessed)} 个文件")
+        print(f"  ❓ 待处理(未知): {len(unprocessed)} （位于「待处理」文件夹）")
 
-    if not args.dry_run:
-        print(f"\n文件已整理到: {output_dir}")
-    else:
-        print(f"\n这是预览模式，文件未被移动。去掉 --dry-run 参数即可实际移动文件。")
+    print(f"\n  📁 输出目录: {output_dir}")
+
+    if not args.no_html:
+        print(f"  🌐 HTML索引: file:///{html_path.replace(os.sep, '/')}")
+
+    if args.dry_run:
+        print(f"\n💡 这是预览模式，文件未被移动。")
+        print(f"   确认无误后去掉 --dry-run 参数即可实际移动文件。")
+    print(f"{'═' * 60}")
 
 
 if __name__ == '__main__':

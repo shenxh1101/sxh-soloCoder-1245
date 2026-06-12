@@ -21,6 +21,12 @@ from dataclasses import dataclass, field, asdict
 from typing import List, Dict, Optional, Tuple
 
 try:
+    sys.stdout.reconfigure(encoding='utf-8')
+    sys.stderr.reconfigure(encoding='utf-8')
+except Exception:
+    pass
+
+try:
     from PyPDF2 import PdfReader
     HAS_PYPDF2 = True
 except ImportError:
@@ -563,47 +569,6 @@ def get_book_text_preview(filepath, file_type, max_chars=2000):
     return ''
 
 
-def detect_book_language(meta, text_detection_chars=2000):
-    """综合判断书籍语言"""
-    lang_confidences = []
-
-    if meta.language:
-        lang_confidences.append((meta.language, 0.9))
-
-    filename_lang, filename_conf = detect_language_by_filename(os.path.basename(meta.file_path))
-    if filename_lang != 'unknown':
-        lang_confidences.append((filename_lang, filename_conf * 0.5))
-
-    if meta.title:
-        title_lang, title_conf = detect_language_by_chars(meta.title)
-        if title_lang != 'unknown':
-            lang_confidences.append((title_lang, title_conf * 0.7))
-
-    if meta.description:
-        desc_lang, desc_conf = detect_language_by_chars(meta.description)
-        if desc_lang != 'unknown':
-            lang_confidences.append((desc_lang, desc_conf * 0.8))
-
-    text_lang = None
-    text_conf = 0
-    if not any(lang in {'zh', 'en', 'ja', 'ko'} for lang, _ in lang_confidences) or not lang_confidences:
-        text = get_book_text_preview(meta.file_path, meta.file_type, text_detection_chars)
-        if text:
-            text_lang, text_conf = detect_language_by_chars(text)
-            if text_lang != 'unknown':
-                lang_confidences.append((text_lang, text_conf * 0.9))
-
-    if not lang_confidences:
-        return ('unknown', 0)
-
-    lang_scores = defaultdict(float)
-    for lang, conf in lang_confidences:
-        lang_scores[lang] += conf
-
-    best_lang = max(lang_scores, key=lang_scores.get)
-    return (best_lang, lang_scores[best_lang])
-
-
 def classify_book(meta, rules):
     """
     根据规则对书籍进行子分类 v2.0
@@ -693,17 +658,17 @@ def classify_book(meta, rules):
                     total_score += count * 15.0 * priority_weight
                     category_keywords_hit[cat_name].append(f"★{hp_kw}x{count}")
 
-        expanded_keywords = list(keywords)
+        all_synonyms = []
         for main_kw, syn_list in synonyms.items():
             for syn in syn_list:
-                if main_kw not in expanded_keywords:
-                    expanded_keywords.append(main_kw)
+                all_synonyms.append((main_kw, syn))
 
         for text, source_weight in text_parts:
             if not text:
                 continue
             text_lower = text.lower()
-            for keyword in expanded_keywords:
+
+            for keyword in keywords:
                 kw_lower = keyword.lower()
                 count = text_lower.count(kw_lower)
                 if count > 0:
@@ -712,12 +677,14 @@ def classify_book(meta, rules):
                     total_score += hit_score
                     category_keywords_hit[cat_name].append(f"{keyword}x{count}")
 
-                    syn_list = synonyms.get(keyword, [])
-                    for syn in syn_list:
-                        syn_count = text_lower.count(syn.lower())
-                        if syn_count > 0:
-                            total_score += syn_count * priority_weight * source_weight * 0.7
-                            category_keywords_hit[cat_name].append(f"{keyword}→{syn}x{syn_count}")
+            for main_kw, syn in all_synonyms:
+                syn_lower = syn.lower()
+                syn_count = text_lower.count(syn_lower)
+                if syn_count > 0:
+                    syn_len_weight = min(1.0, len(syn) / 10.0) + 0.5
+                    hit_score = syn_count * priority_weight * source_weight * syn_len_weight * 0.9
+                    total_score += hit_score
+                    category_keywords_hit[cat_name].append(f"{main_kw}≈{syn}x{syn_count}")
 
         if total_score > 0:
             category_scores[cat_name] = round(total_score, 3)
@@ -891,21 +858,23 @@ def undo_operations(output_dir, operation_id=None):
         operation_id: 指定撤销某次操作，None 则撤销最近一次
     
     Returns:
-        (成功数量, 失败列表, 跳过列表)
+        (成功数量, 失败列表, 跳过列表, 撤销的操作ID)
     """
     all_ops = load_operation_log(output_dir)
     if not all_ops:
-        return (0, [], ["没有找到任何操作记录"])
+        return (0, [], [{'file': '-', 'reason': '没有找到任何操作记录'}], None)
 
     ops_to_undo = []
+    actual_undo_id = None
     if operation_id:
         ops_to_undo = [op for op in all_ops if op['operation_id'] == operation_id]
+        actual_undo_id = operation_id
         if not ops_to_undo:
-            return (0, [], [f"没有找到操作ID: {operation_id}"])
+            return (0, [], [{'file': '-', 'reason': f'没有找到操作ID: {operation_id}'}], operation_id)
     else:
         if all_ops:
-            last_id = all_ops[-1]['operation_id']
-            ops_to_undo = [op for op in all_ops if op['operation_id'] == last_id]
+            actual_undo_id = all_ops[-1]['operation_id']
+            ops_to_undo = [op for op in all_ops if op['operation_id'] == actual_undo_id]
 
     success_count = 0
     failed = []
@@ -925,6 +894,7 @@ def undo_operations(output_dir, operation_id=None):
                 'file': filename,
                 'reason': f'源文件不存在: {src}',
                 'original_path': dst,
+                'src': src,
             })
             continue
 
@@ -933,6 +903,7 @@ def undo_operations(output_dir, operation_id=None):
                 'file': filename,
                 'reason': '文件就在原位置，无需移动',
                 'original_path': dst,
+                'src': src,
             })
             continue
 
@@ -944,6 +915,7 @@ def undo_operations(output_dir, operation_id=None):
                         'file': filename,
                         'reason': f'目标路径已存在同名同大小文件，可能已被还原: {dst}',
                         'original_path': dst,
+                        'src': src,
                     })
                     continue
                 else:
@@ -975,7 +947,58 @@ def undo_operations(output_dir, operation_id=None):
     except Exception as e:
         print(f"更新操作记录失败: {e}")
 
-    return (success_count, failed, skipped)
+    return (success_count, failed, skipped, actual_undo_id)
+
+
+def _dict_to_meta(d):
+    """从字典恢复 BookMetadata 对象"""
+    meta = BookMetadata()
+    for key, value in d.items():
+        if hasattr(meta, key):
+            try:
+                setattr(meta, key, value)
+            except Exception:
+                pass
+    return meta
+
+
+def _meta_to_plan_dict(meta, lang_folders):
+    """把 BookMetadata 转成计划文件的完整字典"""
+    lang_name = lang_folders.get(meta.detected_language, meta.detected_language)
+    sources_str = '; '.join(
+        [f"{src}:{lang}({conf:.2f})" for src, (lang, conf) in meta.language_sources.items()]
+    ) if meta.language_sources else ''
+
+    hit_keywords = ''
+    if meta.category_keywords_hit and meta.category in meta.category_keywords_hit:
+        hit_keywords = ', '.join(meta.category_keywords_hit[meta.category])
+
+    flags = _get_review_flags(meta)
+
+    return {
+        'filename': os.path.basename(meta.file_path),
+        'original_path': meta.file_path,
+        'planned_path': meta.target_path,
+        'file_type': meta.file_type,
+        'file_size': meta.file_size,
+        'file_size_display': format_size(meta.file_size),
+        'detected_language': meta.detected_language,
+        'language_name': lang_name,
+        'language_confidence': meta.language_confidence,
+        'language_sources': sources_str,
+        'category': meta.category,
+        'category_confidence': meta.category_confidence,
+        'keywords_hit': hit_keywords,
+        'title': meta.title,
+        'author': meta.author,
+        'publisher': meta.publisher,
+        'conflict_status': meta.conflict_status,
+        'review_flags': flags,
+        'move_status': meta.move_status,
+        'language_sources_raw': {k: list(v) for k, v in meta.language_sources.items()},
+        'category_keywords_hit_raw': dict(meta.category_keywords_hit),
+        'text_preview': meta.text_preview[:200] if meta.text_preview else '',
+    }
 
 
 def generate_plan(books, output_dir, rules, conflict_strategy=CONFLICT_RENAME):
@@ -998,7 +1021,7 @@ def generate_plan(books, output_dir, rules, conflict_strategy=CONFLICT_RENAME):
     plan_data = {
         'plan_id': datetime.now().strftime('%Y%m%d_%H%M%S'),
         'generated_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-        'source_dir': books[0].file_path if books else '',
+        'source_dir': os.path.commonpath([b.file_path for b in books]) if books else '',
         'output_dir': output_dir,
         'conflict_strategy': conflict_strategy,
         'total_books': len(temp_books),
@@ -1009,36 +1032,7 @@ def generate_plan(books, output_dir, rules, conflict_strategy=CONFLICT_RENAME):
 
     lang_folders = rules.get('language_folders', {})
     for meta in temp_books:
-        lang_name = lang_folders.get(meta.detected_language, meta.detected_language)
-        sources_str = '; '.join(
-            [f"{src}:{lang}({conf:.2f})" for src, (lang, conf) in meta.language_sources.items()]
-        ) if meta.language_sources else ''
-
-        hit_keywords = ''
-        if meta.category_keywords_hit and meta.category in meta.category_keywords_hit:
-            hit_keywords = ', '.join(meta.category_keywords_hit[meta.category])
-
-        flags = _get_review_flags(meta)
-
-        plan_data['books'].append({
-            'filename': os.path.basename(meta.file_path),
-            'original_path': meta.file_path,
-            'planned_path': meta.target_path,
-            'file_type': meta.file_type,
-            'file_size': meta.file_size,
-            'file_size_display': format_size(meta.file_size),
-            'detected_language': meta.detected_language,
-            'language_name': lang_name,
-            'language_confidence': meta.language_confidence,
-            'language_sources': sources_str,
-            'category': meta.category,
-            'category_confidence': meta.category_confidence,
-            'keywords_hit': hit_keywords,
-            'title': meta.title,
-            'author': meta.author,
-            'conflict_status': meta.conflict_status,
-            'review_flags': flags,
-        })
+        plan_data['books'].append(_meta_to_plan_dict(meta, lang_folders))
 
     plan_path = os.path.join(output_dir, PLAN_FILENAME)
     try:
@@ -1048,6 +1042,40 @@ def generate_plan(books, output_dir, rules, conflict_strategy=CONFLICT_RENAME):
     except Exception as e:
         print(f"生成计划文件失败: {e}")
         return None, None, temp_books
+
+
+def restore_books_from_plan(plan_data):
+    """从计划文件恢复 BookMetadata 列表，保留预计算的 target_path/分类/语言"""
+    books = []
+    for b in plan_data['books']:
+        meta = BookMetadata()
+        meta.file_path = b['original_path']
+        meta.original_path = b['original_path']
+        meta.target_path = b.get('planned_path', '')
+        meta.file_type = b.get('file_type', '')
+        meta.file_size = b.get('file_size', 0)
+        meta.title = b.get('title', '')
+        meta.author = b.get('author', '')
+        meta.publisher = b.get('publisher', '')
+        meta.detected_language = b.get('detected_language', 'unknown')
+        meta.language_confidence = b.get('language_confidence', 0.0)
+        meta.category = b.get('category', '')
+        meta.category_confidence = b.get('category_confidence', 0.0)
+        meta.conflict_status = b.get('conflict_status', 'none')
+        meta.move_status = b.get('move_status', 'pending')
+        meta.review_flags = b.get('review_flags', [])
+        meta.text_preview = b.get('text_preview', '')
+
+        lang_sources_raw = b.get('language_sources_raw', {})
+        if lang_sources_raw:
+            meta.language_sources = {k: tuple(v) for k, v in lang_sources_raw.items()}
+
+        kw_raw = b.get('category_keywords_hit_raw', {})
+        if kw_raw:
+            meta.category_keywords_hit = dict(kw_raw)
+
+        books.append(meta)
+    return books
 
 
 def load_plan(output_dir):
@@ -1235,6 +1263,60 @@ def export_manifest(books, output_dir, rules, format='both'):
             print(f"导出JSON清单失败: {e}")
 
     return exported
+
+
+def export_undo_manifest(output_dir, operation_id, success_count, failed, skipped):
+    """导出撤销操作结果清单"""
+    os.makedirs(output_dir, exist_ok=True)
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+    csv_path = os.path.join(output_dir, f'撤销结果_{operation_id}_{timestamp}.csv')
+    json_path = os.path.join(output_dir, f'撤销结果_{operation_id}_{timestamp}.json')
+
+    rows = []
+    for item in failed:
+        rows.append({
+            '状态': '失败',
+            '文件名': item.get('file', ''),
+            '当前位置': item.get('src', ''),
+            '目标还原位置': item.get('dst', ''),
+            '原因': item.get('reason', ''),
+        })
+    for item in skipped:
+        rows.append({
+            '状态': '跳过',
+            '文件名': item.get('file', ''),
+            '当前位置': item.get('src', item.get('original_path', '')),
+            '目标还原位置': item.get('original_path', ''),
+            '原因': item.get('reason', ''),
+        })
+    rows.sort(key=lambda r: r['状态'])
+
+    if rows:
+        try:
+            with open(csv_path, 'w', encoding='utf-8-sig', newline='') as f:
+                writer = csv.DictWriter(f, fieldnames=['状态', '文件名', '当前位置', '目标还原位置', '原因'])
+                writer.writeheader()
+                writer.writerows(rows)
+        except Exception as e:
+            print(f"导出撤销CSV清单失败: {e}")
+
+        try:
+            with open(json_path, 'w', encoding='utf-8') as f:
+                json.dump({
+                    '操作类型': '撤销',
+                    '撤销的操作ID': operation_id,
+                    '生成时间': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                    '统计': {
+                        '成功还原': success_count,
+                        '失败': len(failed),
+                        '跳过': len(skipped),
+                    },
+                    '明细': rows,
+                }, f, ensure_ascii=False, indent=2)
+        except Exception as e:
+            print(f"导出撤销JSON清单失败: {e}")
+
+    return csv_path, json_path
 
 
 def save_thumbnail(meta, output_dir, size=(120, 160)):
@@ -1544,7 +1626,7 @@ function showSection(id) {
     return html_path
 
 
-def move_books(books, target_dir, rules, dry_run=False, conflict_strategy=CONFLICT_RENAME):
+def move_books(books, target_dir, rules, dry_run=False, conflict_strategy=CONFLICT_RENAME, use_existing_target=False):
     """
     移动书籍到目标文件夹
     
@@ -1552,6 +1634,9 @@ def move_books(books, target_dir, rules, dry_run=False, conflict_strategy=CONFLI
     - skip: 跳过同名文件
     - overwrite: 覆盖目标文件
     - rename: 自动重命名 (默认)
+    
+    Args:
+        use_existing_target: 如果 True，则直接使用 meta.target_path（从计划恢复时），不再重新计算目标路径
     
     返回: (处理数量, 错误列表, 冲突列表)
     """
@@ -1562,21 +1647,28 @@ def move_books(books, target_dir, rules, dry_run=False, conflict_strategy=CONFLI
     reserved_targets = set()
 
     for meta in books:
-        lang = meta.detected_language
-        lang_folder = lang_folders.get(lang, lang_folders.get('unknown', '待处理'))
-
-        if lang == 'unknown':
-            target_subdir = os.path.join(target_dir, lang_folder)
+        if use_existing_target and meta.target_path:
+            dst_abs = os.path.abspath(meta.target_path)
+            src_abs = os.path.abspath(meta.file_path)
+            target_subdir = os.path.dirname(dst_abs)
+            base_name = os.path.splitext(os.path.basename(meta.file_path))[0]
+            ext = os.path.splitext(meta.file_path)[1]
         else:
-            category = meta.category or rules.get('default_category', '其他')
-            target_subdir = os.path.join(target_dir, lang_folder, category)
+            lang = meta.detected_language
+            lang_folder = lang_folders.get(lang, lang_folders.get('unknown', '待处理'))
 
-        filename = os.path.basename(meta.file_path)
-        base_name, ext = os.path.splitext(filename)
-        target_path = os.path.join(target_subdir, filename)
+            if lang == 'unknown':
+                target_subdir = os.path.join(target_dir, lang_folder)
+            else:
+                category = meta.category or rules.get('default_category', '其他')
+                target_subdir = os.path.join(target_dir, lang_folder, category)
 
-        src_abs = os.path.abspath(meta.file_path)
-        dst_abs = os.path.abspath(target_path)
+            filename = os.path.basename(meta.file_path)
+            base_name, ext = os.path.splitext(filename)
+            target_path = os.path.join(target_subdir, filename)
+
+            src_abs = os.path.abspath(meta.file_path)
+            dst_abs = os.path.abspath(target_path)
 
         if src_abs == dst_abs:
             meta.move_status = 'in_place'
@@ -1591,7 +1683,7 @@ def move_books(books, target_dir, rules, dry_run=False, conflict_strategy=CONFLI
             meta.conflict_status = 'conflict'
             if conflict_strategy == CONFLICT_SKIP:
                 conflicts.append({
-                    'file': filename,
+                    'file': os.path.basename(meta.file_path),
                     'type': '目标已存在' if has_disk_conflict else '批次内冲突',
                     'src': meta.file_path,
                     'dst': dst_abs,
@@ -1604,7 +1696,7 @@ def move_books(books, target_dir, rules, dry_run=False, conflict_strategy=CONFLI
 
             elif conflict_strategy == CONFLICT_OVERWRITE:
                 conflicts.append({
-                    'file': filename,
+                    'file': os.path.basename(meta.file_path),
                     'type': '目标已存在' if has_disk_conflict else '批次内冲突',
                     'src': meta.file_path,
                     'dst': dst_abs,
@@ -1626,7 +1718,7 @@ def move_books(books, target_dir, rules, dry_run=False, conflict_strategy=CONFLI
                     counter += 1
 
                 conflicts.append({
-                    'file': filename,
+                    'file': os.path.basename(meta.file_path),
                     'type': '目标已存在' if has_disk_conflict else '批次内冲突',
                     'src': meta.file_path,
                     'dst': dst_abs,
@@ -1749,9 +1841,9 @@ def main():
             target_dir = os.getcwd()
         print(f"📂 操作目录: {target_dir}")
         print(f"↩️  正在撤销{'指定' if args.undo_id else '最近一次'}操作...")
-        success, failed, skipped = undo_operations(target_dir, args.undo_id)
+        success, failed, skipped, actual_undo_id = undo_operations(target_dir, args.undo_id)
         print(f"\n{'═' * 60}")
-        print(f"↩️  撤销完成！")
+        print(f"↩️  撤销完成！(操作ID: {actual_undo_id or '未知'})")
         print(f"{'─' * 60}")
         print(f"  ✅ 成功还原: {success} 个文件")
         if skipped:
@@ -1766,6 +1858,13 @@ def main():
                 print(f"     - {f['file']}: {f['reason']}")
             if len(failed) > 10:
                 print(f"     ... 还有 {len(failed) - 10} 个")
+
+        if actual_undo_id and (failed or skipped):
+            csv_p, json_p = export_undo_manifest(target_dir, actual_undo_id, success, failed, skipped)
+            if os.path.exists(csv_p):
+                print(f"\n  📄 撤销结果清单 (CSV): {csv_p}")
+            if os.path.exists(json_p):
+                print(f"  📄 撤销结果清单 (JSON): {json_p}")
         print(f"{'═' * 60}")
         return
 
@@ -1809,11 +1908,21 @@ def main():
             except KeyboardInterrupt:
                 print("\n已取消执行")
                 return
-        source_dir = os.path.commonpath([b['original_path'] for b in plan_data['books']]) if plan_data['books'] else source_dir
         args.conflict = plan_data['conflict_strategy']
-        books_info = [(b['original_path'], b['file_type']) for b in plan_data['books']]
-        print(f"\n✅ 计划已确认，开始执行 (操作ID: {operation_id})...")
+        books_meta = restore_books_from_plan(plan_data)
+        for meta in books_meta:
+            meta.operation_id = operation_id
+        needs_review_count = sum(1 for m in books_meta if m.review_flags)
+        low_confidence_count = sum(1 for m in books_meta if m.language_confidence < 0.3 and m.detected_language != 'unknown')
+        lang_mismatch_count = 0
+        for m in books_meta:
+            fl, _ = detect_language_by_filename(os.path.basename(m.file_path))
+            if fl == 'en' and m.detected_language == 'zh':
+                lang_mismatch_count += 1
+        print(f"\n✅ 计划已确认，使用预计算结果 (操作ID: {operation_id})")
+        skip_meta_detect = True
     else:
+        skip_meta_detect = False
         print(f"扫描文件夹: {source_dir}")
         print(f"输出文件夹: {output_dir}")
         print(f"配置文件: {config_path}")
@@ -1828,67 +1937,87 @@ def main():
         books_info = scan_books(source_dir)
         print(f"找到 {len(books_info)} 本电子书")
 
-    if not books_info:
-        print("没有找到任何电子书文件")
-        return
+        if not books_info:
+            print("没有找到任何电子书文件")
+            return
 
-    if not HAS_PYPDF2:
-        print("提示: 未安装 PyPDF2，PDF 元数据读取将受限，可通过 pip install PyPDF2 安装")
-    if not HAS_EBOOKLIB:
-        print("提示: 未安装 ebooklib，将使用基础方式解析 EPUB，可通过 pip install ebooklib 安装")
-    if not HAS_PIL:
-        print("提示: 未安装 Pillow，无法生成封面缩略图，可通过 pip install Pillow 安装")
+        if not HAS_PYPDF2:
+            print("提示: 未安装 PyPDF2，PDF 元数据读取将受限，可通过 pip install PyPDF2 安装")
+        if not HAS_EBOOKLIB:
+            print("提示: 未安装 ebooklib，将使用基础方式解析 EPUB，可通过 pip install ebooklib 安装")
+        if not HAS_PIL:
+            print("提示: 未安装 Pillow，无法生成封面缩略图，可通过 pip install Pillow 安装")
 
-    print("\n正在读取元数据并检测语言/分类...")
-    books_meta = []
-    low_confidence_count = 0
-    lang_mismatch_count = 0
-    needs_review_count = 0
+        print("\n正在读取元数据并检测语言/分类...")
+        books_meta = []
+        low_confidence_count = 0
+        lang_mismatch_count = 0
+        needs_review_count = 0
 
-    for i, (filepath, file_type) in enumerate(books_info, 1):
-        display_name = os.path.basename(filepath)
-        if len(display_name) > 50:
-            display_name = display_name[:47] + '...'
-        print(f"  [{i}/{len(books_info)}] {display_name}", end='')
+        for i, (filepath, file_type) in enumerate(books_info, 1):
+            display_name = os.path.basename(filepath)
+            if len(display_name) > 50:
+                display_name = display_name[:47] + '...'
+            print(f"  [{i}/{len(books_info)}] {display_name}", end='')
 
-        meta = read_metadata(filepath, file_type)
-        meta.original_path = filepath
-        meta.operation_id = operation_id
-        meta.file_path = filepath
+            try:
+                meta = read_metadata(filepath, file_type)
+            except Exception as e:
+                print(f"  [读取元数据失败: {e}]")
+                meta = BookMetadata()
+                meta.file_path = filepath
+                meta.original_path = filepath
+                meta.file_type = file_type
+                try:
+                    meta.file_size = os.path.getsize(filepath)
+                except Exception:
+                    pass
 
-        lang, conf = detect_book_language(meta, text_detection_chars, rules=rules)
-        meta.detected_language = lang
-        meta.language_confidence = conf
+            meta.original_path = filepath
+            meta.operation_id = operation_id
+            meta.file_path = filepath
 
-        category = classify_book(meta, rules)
-        meta.category = category
+            try:
+                lang, conf = detect_book_language(meta, text_detection_chars, rules=rules)
+            except Exception as e:
+                print(f"  [语言检测出错: {e}]")
+                lang, conf = 'unknown', 0.0
+            meta.detected_language = lang
+            meta.language_confidence = conf
 
-        flags = _get_review_flags(meta)
-        meta.review_flags = flags
-        if flags:
-            needs_review_count += 1
+            try:
+                category = classify_book(meta, rules)
+            except Exception as e:
+                print(f"  [分类出错: {e}]")
+                category = rules.get('default_category', '其他')
+            meta.category = category
 
-        if conf < 0.3 and lang != 'unknown':
-            low_confidence_count += 1
+            flags = _get_review_flags(meta)
+            meta.review_flags = flags
+            if flags:
+                needs_review_count += 1
 
-        filename_lang, _ = detect_language_by_filename(os.path.basename(filepath))
-        if filename_lang == 'en' and lang == 'zh':
-            lang_mismatch_count += 1
+            if conf < 0.3 and lang != 'unknown':
+                low_confidence_count += 1
 
-        books_meta.append(meta)
+            filename_lang, _ = detect_language_by_filename(os.path.basename(filepath))
+            if filename_lang == 'en' and lang == 'zh':
+                lang_mismatch_count += 1
 
-        status_parts = []
-        lang_names = {'zh': '中文', 'en': '英文', 'ja': '日文', 'ko': '韩文', 'unknown': '待识别'}
-        status_parts.append(f"语言={lang_names.get(lang, lang)}({conf:.2f})")
-        cat_info = f"分类={meta.category}" if meta.category_confidence > 0 else "分类=其他"
-        if meta.category_confidence > 0:
-            cat_info += f"({meta.category_confidence:.1f})"
-        status_parts.append(cat_info)
-        if flags:
-            status_parts.append(f"🚩{','.join(flags[:2])}")
-        print(f"  [{', '.join(status_parts)}]")
+            books_meta.append(meta)
 
-    if args.plan_only or not args.confirm_plan:
+            status_parts = []
+            lang_names = {'zh': '中文', 'en': '英文', 'ja': '日文', 'ko': '韩文', 'unknown': '待识别'}
+            status_parts.append(f"语言={lang_names.get(lang, lang)}({conf:.2f})")
+            cat_info = f"分类={meta.category}" if meta.category_confidence > 0 else "分类=其他"
+            if meta.category_confidence > 0:
+                cat_info += f"({meta.category_confidence:.1f})"
+            status_parts.append(cat_info)
+            if flags:
+                status_parts.append(f"🚩{','.join(flags[:2])}")
+            print(f"  [{', '.join(status_parts)}]")
+
+    if not skip_meta_detect:
         print(f"\n📋 正在生成整理计划...")
         plan_path, plan_data, _ = generate_plan(books_meta, output_dir, rules, conflict_strategy=args.conflict)
         print_plan_summary(plan_data)
@@ -1921,27 +2050,27 @@ def main():
         html_path = generate_html_index(books_meta, rules, output_dir)
         print(f"  ✓ HTML索引页: {html_path}")
 
-    if not args.confirm_plan:
-        if not args.auto_confirm and not args.dry_run:
-            try:
-                confirm = input(f"\n确认整理以上 {len(books_meta)} 本书？(y/N): ").strip().lower()
-                if confirm not in ('y', 'yes'):
-                    print("已取消执行")
-                    if not args.no_manifest:
-                        print("正在导出预整理清单...")
-                        exported = export_manifest(books_meta, output_dir, rules, format=args.manifest_format)
-                        for exp in exported:
-                            print(f"  ✓ {exp}")
-                    return
-            except KeyboardInterrupt:
-                print("\n已取消执行")
+    if not skip_meta_detect and not args.auto_confirm and not args.dry_run:
+        try:
+            confirm = input(f"\n确认整理以上 {len(books_meta)} 本书？(y/N): ").strip().lower()
+            if confirm not in ('y', 'yes'):
+                print("已取消执行")
+                if not args.no_manifest:
+                    print("正在导出预整理清单...")
+                    exported = export_manifest(books_meta, output_dir, rules, format=args.manifest_format)
+                    for exp in exported:
+                        print(f"  ✓ {exp}")
                 return
+        except KeyboardInterrupt:
+            print("\n已取消执行")
+            return
 
     print(f"\n正在整理文件（冲突策略: {args.conflict}）...")
     moved_count, errors, conflicts = move_books(
         books_meta, output_dir, rules,
         dry_run=args.dry_run,
-        conflict_strategy=args.conflict
+        conflict_strategy=args.conflict,
+        use_existing_target=skip_meta_detect
     )
 
     if conflicts:

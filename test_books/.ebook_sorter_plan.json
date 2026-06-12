@@ -1,0 +1,84 @@
+{
+  "plan_id": "20260612_233818",
+  "generated_at": "2026-06-12 23:38:18",
+  "source_dir": "D:\\code\\TraeProjects\\1245\\test_books",
+  "output_dir": "D:\\code\\TraeProjects\\1245\\test_books",
+  "conflict_strategy": "rename",
+  "total_books": 2,
+  "conflicts_count": 0,
+  "conflicts": [],
+  "books": [
+    {
+      "filename": "DB_design.epub",
+      "original_path": "D:\\code\\TraeProjects\\1245\\test_books\\DB_design.epub",
+      "planned_path": "D:\\code\\TraeProjects\\1245\\test_books\\英文\\Technology\\DB_design.epub",
+      "file_type": "epub",
+      "file_size": 17,
+      "file_size_display": "17 B",
+      "detected_language": "en",
+      "language_name": "英文",
+      "language_confidence": 0.1,
+      "language_sources": "filename:en(0.10)",
+      "category": "Technology",
+      "category_confidence": 0.284,
+      "keywords_hit": "database≈dbx1",
+      "title": "",
+      "author": "",
+      "publisher": "",
+      "conflict_status": "none",
+      "review_flags": [
+        "低语言置信度",
+        "低分类置信度"
+      ],
+      "move_status": "planned",
+      "language_sources_raw": {
+        "filename": [
+          "en",
+          0.1
+        ]
+      },
+      "category_keywords_hit_raw": {
+        "Technology": [
+          "database≈dbx1"
+        ]
+      },
+      "text_preview": ""
+    },
+    {
+      "filename": "py_ml_intro.pdf",
+      "original_path": "D:\\code\\TraeProjects\\1245\\test_books\\py_ml_intro.pdf",
+      "planned_path": "D:\\code\\TraeProjects\\1245\\test_books\\英文\\Technology\\py_ml_intro.pdf",
+      "file_type": "pdf",
+      "file_size": 24,
+      "file_size_display": "24 B",
+      "detected_language": "en",
+      "language_name": "英文",
+      "language_confidence": 0.1,
+      "language_sources": "filename:en(0.10)",
+      "category": "Technology",
+      "category_confidence": 0.567,
+      "keywords_hit": "python≈pyx1, ai≈mlx1",
+      "title": "",
+      "author": "",
+      "publisher": "",
+      "conflict_status": "none",
+      "review_flags": [
+        "低语言置信度"
+      ],
+      "move_status": "planned",
+      "language_sources_raw": {
+        "filename": [
+          "en",
+          0.1
+        ]
+      },
+      "category_keywords_hit_raw": {
+        "Technology": [
+          "python≈pyx1",
+          "ai≈mlx1"
+        ]
+      },
+      "text_preview": ""
+    }
+  ]
+}

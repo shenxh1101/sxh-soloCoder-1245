@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>电子书索引</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+    background: #f5f5f5;
+    color: #333;
+    padding: 20px;
+}
+.container { max-width: 1400px; margin: 0 auto; }
+h1 {
+    text-align: center;
+    margin-bottom: 30px;
+    color: #2c3e50;
+    font-size: 2em;
+}
+.stats-bar {
+    background: white;
+    padding: 20px;
+    border-radius: 10px;
+    margin-bottom: 30px;
+    display: flex;
+    justify-content: space-around;
+    flex-wrap: wrap;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+.stat-item { text-align: center; padding: 10px; }
+.stat-value { font-size: 1.8em; font-weight: bold; color: #3498db; }
+.stat-label { color: #7f8c8d; margin-top: 5px; }
+.language-section { margin-bottom: 40px; }
+.lang-title {
+    font-size: 1.5em;
+    color: #2c3e50;
+    margin-bottom: 20px;
+    padding-bottom: 10px;
+    border-bottom: 3px solid #3498db;
+    display: inline-block;
+}
+.book-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 20px;
+}
+.book-card {
+    background: white;
+    border-radius: 10px;
+    padding: 15px;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+    transition: transform 0.2s, box-shadow 0.2s;
+    display: flex;
+    flex-direction: column;
+}
+.book-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 5px 20px rgba(0,0,0,0.15);
+}
+.book-cover {
+    width: 100%;
+    height: 180px;
+    object-fit: contain;
+    background: #f0f0f0;
+    border-radius: 5px;
+    margin-bottom: 10px;
+}
+.no-cover {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    font-size: 0.9em;
+    text-align: center;
+    padding: 10px;
+}
+.book-title {
+    font-weight: bold;
+    font-size: 0.95em;
+    margin-bottom: 5px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    min-height: 2.4em;
+}
+.book-author {
+    color: #7f8c8d;
+    font-size: 0.85em;
+    margin-bottom: 8px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+.book-meta {
+    margin-top: auto;
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.8em;
+    color: #95a5a6;
+}
+.badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.75em;
+    background: #ecf0f1;
+    color: #7f8c8d;
+}
+.badge-lang-zh { background: #e8f5e9; color: #2e7d32; }
+.badge-lang-en { background: #e3f2fd; color: #1565c0; }
+.badge-lang-ja { background: #fff3e0; color: #e65100; }
+.badge-lang-unknown { background: #ffebee; color: #c62828; }
+.category-title {
+    font-size: 1.1em;
+    color: #34495e;
+    margin: 20px 0 15px 0;
+    padding-left: 10px;
+    border-left: 4px solid #3498db;
+}
+footer {
+    text-align: center;
+    margin-top: 50px;
+    padding: 20px;
+    color: #95a5a6;
+    font-size: 0.9em;
+}
+.nav-tabs {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    flex-wrap: wrap;
+}
+.nav-tab {
+    padding: 10px 20px;
+    background: white;
+    border: none;
+    border-radius: 20px;
+    cursor: pointer;
+    font-size: 0.95em;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    transition: all 0.2s;
+}
+.nav-tab:hover { background: #3498db; color: white; }
+.nav-tab.active { background: #3498db; color: white; }
+</style>
+</head>
+<body>
+<div class="container">
+<h1>📚 电子书索引库</h1>
+
+<div class="stats-bar">
+    <div class="stat-item">
+        <div class="stat-value">2</div>
+        <div class="stat-label">书籍总数</div>
+    </div>
+    <div class="stat-item">
+        <div class="stat-value">41 B</div>
+        <div class="stat-label">总大小</div>
+    </div>
+    <div class="stat-item">
+        <div class="stat-value">1</div>
+        <div class="stat-label">语言种类</div>
+    </div>
+    <div class="stat-item">
+        <div class="stat-value">2026-06-12</div>
+        <div class="stat-label">生成日期</div>
+    </div>
+</div>
+<div class="nav-tabs"><button class="nav-tab active" onclick="showSection('sec-en')">英文 (2)</button></div><div id="sec-en" class="language-section" style="display: block;"><h2 class="lang-title">英文 (2 本)</h2><h3 class="category-title">Technology (2 本)</h3><div class="book-grid">
+<div class="book-card">
+    <div class="book-cover no-cover">DB_design<br><span style="font-size:0.8em;opacity:0.8;">[EPUB]</span></div>
+    <div class="book-title" title="DB_design">DB_design</div>
+    <div class="book-author" title="未知作者">未知作者</div>
+    <div class="book-meta">
+        <span class="badge badge-lang-en">EPUB</span>
+        <span>17 B</span>
+    </div>
+</div>
+
+<div class="book-card">
+    <div class="book-cover no-cover">py_ml_intro<br><span style="font-size:0.8em;opacity:0.8;">[PDF]</span></div>
+    <div class="book-title" title="py_ml_intro">py_ml_intro</div>
+    <div class="book-author" title="未知作者">未知作者</div>
+    <div class="book-meta">
+        <span class="badge badge-lang-en">PDF</span>
+        <span>24 B</span>
+    </div>
+</div>
+</div></div>
+</div>
+<footer>
+    由电子书分类工具自动生成 · 共 2 本书籍
+</footer>
+<script>
+function showSection(id) {
+    document.querySelectorAll('.language-section').forEach(sec => {
+        sec.style.display = 'none';
+    });
+    document.getElementById(id).style.display = 'block';
+    document.querySelectorAll('.nav-tab').forEach(tab => {
+        tab.classList.remove('active');
+    });
+    event.target.classList.add('active');
+}
+</script>
+</body>
+</html>

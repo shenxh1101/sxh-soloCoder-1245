@@ -1,4 +1,11 @@
 {
+  "language_detection": {
+    "trust_metadata_only_if_cjk": true,
+    "body_text_weight_multiplier": 1.5,
+    "filename_en_weight": 0.1,
+    "force_body_check_if_en": true,
+    "minimum_body_chars_for_cjk": 5
+  },
   "language_folders": {
     "zh": "中文",
     "en": "英文",
@@ -9,74 +16,224 @@
     "es": "西班牙文",
     "unknown": "待处理"
   },
+  "global_exclude_keywords": [],
+  "global_author_hints": {},
+  "global_publisher_hints": {},
   "subcategories": {
     "zh": {
       "小说": {
+        "priority": 1,
         "keywords": ["小说", "故事", "长篇", "短篇", "武侠", "科幻", "悬疑", "推理", "言情", "爱情", "历史", "传记", "自传", "散文", "诗歌", "文学", "名著", "经典", "童话", "寓言", "奇幻", "玄幻", "都市", "青春", "校园", "网游", "仙侠", "修真", "穿越", "重生"],
-        "priority": 1
+        "high_priority_keywords": ["长篇小说", "短篇小说集", "金庸作品集", "古龙作品", "三体", "流浪地球", "小说集", "散文集", "诗歌集"],
+        "synonyms": {
+          "科幻": ["科幻小说", "科学幻想"],
+          "推理": ["侦探", "推理小说"],
+          "言情": ["爱情小说", "都市言情"],
+          "武侠": ["武侠小说", "功夫小说"]
+        },
+        "exclude_keywords": ["历史研究", "哲学研究", "社会科学", "心理学", "经济学"],
+        "authors": ["金庸", "古龙", "路遥", "余华", "莫言", "刘慈欣", "郝景芳", "村上春树", "东野圭吾", "伊坂幸太郎"],
+        "publishers": ["人民文学出版社", "作家出版社", "上海译文出版社", "新星出版社", "读客文化"]
       },
       "技术": {
+        "priority": 2,
         "keywords": ["编程", "程序", "算法", "数据结构", "Python", "Java", "C++", "C语言", "JavaScript", "前端", "后端", "数据库", "网络", "操作系统", "Linux", "Windows", "计算机", "软件", "硬件", "AI", "人工智能", "机器学习", "深度学习", "数据分析", "大数据", "云计算", "架构", "设计模式", "源码", "实战", "指南", "教程", "入门", "精通", "权威", "手册", "黑客", "安全", "密码学", "区块链", "移动开发", "iOS", "Android", "游戏开发", "Unity", "Unreal", "Web", "HTML", "CSS", "React", "Vue", "Angular", "Node.js", "Docker", "Kubernetes", "微服务"],
-        "priority": 2
+        "high_priority_keywords": ["编程指南", "从入门到精通", "实战", "源码分析", "架构设计", "深度学习", "机器学习实战", "Python编程", "Java核心", "C++ Primer", "代码大全", "设计模式", "算法导论"],
+        "synonyms": {
+          "Python": ["python", "py"],
+          "AI": ["人工智能", "machine learning", "深度学习"],
+          "前端": ["frontend", "前端开发"],
+          "后端": ["backend", "后端开发"],
+          "数据库": ["Database", "DB", "MySQL", "PostgreSQL", "MongoDB", "Redis"],
+          "Linux": ["linux", "unix", "shell"],
+          "Git": ["git", "版本控制"],
+          "Docker": ["docker", "容器"]
+        },
+        "exclude_keywords": ["小说", "文学", "散文", "诗歌", "哲学", "历史小说", "科幻小说"],
+        "authors": ["Donald Knuth", "Martin Fowler", "Robert C. Martin", "廖雪峰", "阮一峰", "陈皓", "左耳朵耗子", "极客时间"],
+        "publishers": ["机械工业出版社", "人民邮电出版社", "电子工业出版社", "清华大学出版社", "O'Reilly", "Manning", "图灵教育", "异步社区"]
       },
       "社科": {
+        "priority": 3,
         "keywords": ["历史", "哲学", "心理", "社会", "经济", "政治", "法律", "军事", "文化", "人类学", "社会学", "经济学", "政治学", "法学", "心理学", "管理学", "营销", "商业", "金融", "投资", "理财", "会计", "统计", "教育", "传播", "新闻", "媒体", "艺术", "美学", "宗教", "神话", "民俗", "考古", "地理", "国际关系"],
-        "priority": 3
+        "high_priority_keywords": ["中国通史", "世界历史", "哲学史", "心理学导论", "经济学原理", "资本论", "君主论", "社会契约论"],
+        "synonyms": {
+          "心理": ["心理学", "社会心理", "认知心理"],
+          "经济": ["经济学", "政治经济学", "金融"],
+          "历史": ["史学", "历史学"],
+          "哲学": ["哲学史", "西方哲学", "中国哲学"]
+        },
+        "exclude_keywords": ["小说", "编程", "程序", "技术", "菜谱", "食谱", "健身"],
+        "authors": ["黄仁宇", "钱穆", "陈寅恪", "尼采", "弗洛伊德", "荣格", "凯恩斯", "亚当斯密", "马克思"],
+        "publishers": ["商务印书馆", "三联书店", "中信出版社", "北京大学出版社", "广西师范大学出版社"]
       },
       "生活": {
+        "priority": 4,
         "keywords": ["美食", "烹饪", "食谱", "烘焙", "养生", "健康", "健身", "运动", "瑜伽", "减肥", "美容", "护肤", "时尚", "穿搭", "家居", "装修", "园艺", "宠物", "旅行", "游记", "摄影", "手工", "DIY", "育儿", "亲子", "家庭", "情感", "人际", "沟通", "职场", "成功", "励志", "自我提升", "时间管理", "效率"],
-        "priority": 4
+        "high_priority_keywords": ["家常菜", "烘焙全书", "健身指南", "瑜伽教程", "旅行攻略", "育儿百科"],
+        "synonyms": {
+          "烹饪": ["厨艺", "美食做法"],
+          "健身": ["肌肉训练", "力量训练"],
+          "旅行": ["旅游", "游记", "攻略"],
+          "育儿": ["亲子", "婴幼儿护理"]
+        },
+        "exclude_keywords": ["小说", "编程", "历史研究", "哲学", "经济学"],
+        "authors": ["下厨房", "健身教练", "营养师"],
+        "publishers": ["中国轻工业出版社", "生活·读书·新知三联书店", "青岛出版社"]
       },
       "科普": {
+        "priority": 5,
         "keywords": ["科普", "科学", "物理", "化学", "生物", "数学", "天文", "地理", "医学", "人体", "自然", "环境", "生态", "进化", "基因", "量子", "相对论", "宇宙", "时间", "空间", "科技", "发明", "探索", "百科全书", "十万个为什么"],
-        "priority": 5
+        "high_priority_keywords": ["时间简史", "果壳中的宇宙", "自私的基因", "从一到无穷大", "上帝掷骰子吗"],
+        "synonyms": {
+          "科普": ["科学普及", "大众科学"],
+          "物理": ["物理学", "量子物理", "理论物理"],
+          "宇宙": ["太空", "天文学"]
+        },
+        "exclude_keywords": ["小说", "编程教程", "技术手册", "哲学"],
+        "authors": ["史蒂芬霍金", "卡尔萨根", "理查德道金斯", "曹天元"],
+        "publishers": ["湖南科学技术出版社", "科学出版社"]
       }
     },
     "en": {
       "Fiction": {
+        "priority": 1,
         "keywords": ["novel", "fiction", "story", "tale", "romance", "mystery", "thriller", "sci-fi", "science fiction", "fantasy", "horror", "adventure", "history", "biography", "autobiography", "memoir", "poetry", "literary", "classics", "fairy tale", "mythology", "young adult", "ya", "children", "short stories"],
-        "priority": 1
+        "high_priority_keywords": ["A Song of Ice and Fire", "Harry Potter", "Lord of the Rings", "The Complete Works of", "Novel", "Collection", "Anthology"],
+        "synonyms": {
+          "sci-fi": ["science fiction", "sci fi", "scifi"],
+          "novel": ["fiction", "story"],
+          "mystery": ["detective", "crime"],
+          "biography": ["autobiography", "memoir"]
+        },
+        "exclude_keywords": ["programming", "textbook", "manual", "guide", "algorithm", "data structure"],
+        "authors": ["George R.R. Martin", "J.K. Rowling", "J.R.R. Tolkien", "Stephen King", "Agatha Christie", "Haruki Murakami"],
+        "publishers": ["Penguin Random House", "HarperCollins", "Simon & Schuster", "Tor Books"]
       },
       "Technology": {
+        "priority": 2,
         "keywords": ["programming", "program", "algorithm", "data structure", "python", "java", "c++", "javascript", "frontend", "backend", "database", "network", "operating system", "linux", "windows", "computer", "software", "hardware", "artificial intelligence", "ai", "machine learning", "deep learning", "data analysis", "big data", "cloud", "architecture", "design pattern", "source code", "practical", "guide", "tutorial", "beginner", "mastering", "definitive", "handbook", "hacking", "security", "cryptography", "blockchain", "mobile development", "ios", "android", "game development", "unity", "unreal", "web", "html", "css", "react", "vue", "angular", "node.js", "docker", "kubernetes", "microservices"],
-        "priority": 2
+        "high_priority_keywords": ["Programming Guide", "Head First", "Definitive Guide", "The Art of Computer Programming", "Design Patterns", "Introduction to Algorithms", "Clean Code", "Refactoring"],
+        "synonyms": {
+          "python": ["py"],
+          "ai": ["artificial intelligence", "ml", "machine learning"],
+          "frontend": ["front end", "client side"],
+          "backend": ["back end", "server side"],
+          "database": ["db", "mysql", "postgresql", "mongodb", "redis"],
+          "docker": ["container", "kubernetes", "k8s"],
+          "os": ["operating system", "linux", "unix", "windows"]
+        },
+        "exclude_keywords": ["novel", "fiction", "poetry", "literature", "philosophy", "history book"],
+        "authors": ["Donald Knuth", "Martin Fowler", "Robert C. Martin", "Eric Evans", "Kent Beck"],
+        "publishers": ["O'Reilly Media", "Manning Publications", "Addison-Wesley", "No Starch Press", "Apress"]
       },
       "Social Science": {
+        "priority": 3,
         "keywords": ["history", "philosophy", "psychology", "sociology", "economics", "politics", "law", "military", "culture", "anthropology", "political science", "management", "marketing", "business", "finance", "investment", "accounting", "statistics", "education", "communication", "journalism", "media", "art", "aesthetics", "religion", "mythology", "folklore", "archaeology", "geography", "international relations"],
-        "priority": 3
+        "high_priority_keywords": ["The Prince", "Communist Manifesto", "Wealth of Nations", "Origin of Species", "Sapiens", "Freud", "Nietzsche"],
+        "synonyms": {
+          "psychology": ["cognitive science", "behavioral"],
+          "economics": ["economy", "financial"],
+          "philosophy": ["philosophical"],
+          "history": ["historical", "historiography"]
+        },
+        "exclude_keywords": ["novel", "programming", "cookbook", "recipe", "fitness"],
+        "authors": ["Sigmund Freud", "Friedrich Nietzsche", "Karl Marx", "Adam Smith", "Charles Darwin"],
+        "publishers": ["Oxford University Press", "Cambridge University Press", "Harvard University Press", "Routledge"]
       },
       "Lifestyle": {
+        "priority": 4,
         "keywords": ["cooking", "cookbook", "recipe", "baking", "health", "fitness", "exercise", "yoga", "weight loss", "beauty", "skincare", "fashion", "home", "decor", "gardening", "pet", "travel", "photography", "craft", "diy", "parenting", "family", "relationship", "communication", "career", "success", "motivation", "self-help", "self-improvement", "time management", "productivity"],
-        "priority": 4
+        "high_priority_keywords": ["Cookbook", "Recipes", "The 4-Hour Workweek", "How to Win Friends", "Atomic Habits", "Travel Guide"],
+        "synonyms": {
+          "cooking": ["cuisine", "culinary"],
+          "fitness": ["workout", "muscle building", "crossfit"],
+          "travel": ["travelling", "touring"],
+          "self-help": ["self improvement", "personal development"]
+        },
+        "exclude_keywords": ["novel", "programming", "philosophy", "economics", "history"],
+        "authors": ["Tim Ferriss", "Dale Carnegie", "James Clear"],
+        "publishers": ["DK", "Chronicle Books", "Clarkson Potter"]
       },
       "Science": {
+        "priority": 5,
         "keywords": ["popular science", "science", "physics", "chemistry", "biology", "mathematics", "astronomy", "geography", "medicine", "human body", "nature", "environment", "ecology", "evolution", "genetics", "quantum", "relativity", "universe", "space", "time", "technology", "invention", "exploration", "encyclopedia"],
-        "priority": 5
+        "high_priority_keywords": ["A Brief History of Time", "The Selfish Gene", "Cosmos", "The Elegant Universe"],
+        "synonyms": {
+          "physics": ["quantum physics", "theoretical physics"],
+          "astronomy": ["cosmology", "astrophysics"],
+          "biology": ["life science", "genetics"]
+        },
+        "exclude_keywords": ["novel", "programming", "philosophy", "fiction"],
+        "authors": ["Stephen Hawking", "Carl Sagan", "Richard Dawkins", "Brian Greene"],
+        "publishers": ["W.W. Norton", "Vintage", "Houghton Mifflin Harcourt"]
       }
     },
     "ja": {
       "小説": {
+        "priority": 1,
         "keywords": ["小説", "物語", "長編", "短編", "ミステリー", "サスペンス", "ファンタジー", "恋愛", "ライトノベル", "ラノベ", "歴史", "伝記", "自伝", "詩", "文学", "古典", "名作", "童話", "神話", "青春", "推理"],
-        "priority": 1
+        "high_priority_keywords": ["長編小説", "短編集", "作品集", "全集", "文学全集"],
+        "synonyms": {
+          "ミステリー": ["推理", "探偵"],
+          "ライトノベル": ["ラノベ"],
+          "小説": ["物語"]
+        },
+        "exclude_keywords": ["プログラミング", "技術", "数学", "物理"],
+        "authors": ["村上春樹", "東野圭吾", "伊坂幸太郎", "宮崎駿", "夏目漱石", "芥川龍之介"],
+        "publishers": ["講談社", "文藝春秋", "新潮社", "角川書店"]
       },
       "技術": {
+        "priority": 2,
         "keywords": ["プログラミング", "プログラム", "アルゴリズム", "データ構造", "Python", "Java", "C言語", "JavaScript", "フロントエンド", "バックエンド", "データベース", "ネットワーク", "OS", "Linux", "Windows", "コンピュータ", "ソフトウェア", "ハードウェア", "AI", "人工知能", "機械学習", "データ分析", "クラウド", "アーキテクチャ", "デザインパターン", "実践", "ガイド", "チュートリアル", "入門", "精通", "ハンドブック", "セキュリティ", "暗号", "ブロックチェーン", "スマホアプリ", "iOS", "Android", "ゲーム開発", "Unity", "Web", "HTML", "CSS", "React", "Vue", "Docker"],
-        "priority": 2
+        "high_priority_keywords": ["プログラミング入門", "実践ガイド", "徹底解説", "やさしい"],
+        "synonyms": {
+          "プログラミング": ["プログラム", "コーディング"],
+          "AI": ["人工知能", "機械学習"],
+          "データベース": ["DB", "MySQL"]
+        },
+        "exclude_keywords": ["小説", "文学", "詩"],
+        "authors": ["竹内聡", "真島慶一"],
+        "publishers": ["技術評論社", "翔泳社", "オライリージャパン", "ソフトバンククリエイティブ"]
       },
       "教養": {
+        "priority": 3,
         "keywords": ["歴史", "哲学", "心理学", "社会学", "経済学", "政治学", "法律", "軍事", "文化", "人類学", "経営学", "マーケティング", "ビジネス", "金融", "投資", "会計", "統計学", "教育学", "コミュニケーション", "ジャーナリズム", "メディア", "芸術", "美学", "宗教", "神話", "民俗学", "考古学", "地理", "国際関係"],
-        "priority": 3
+        "high_priority_keywords": ["西洋哲学史", "日本史", "世界史", "経済学入門"],
+        "synonyms": {
+          "心理学": ["精神医学"],
+          "経済学": ["マクロ経済", "ミクロ経済"]
+        },
+        "exclude_keywords": ["小説", "プログラミング"],
+        "authors": ["河合隼雄", "丸山真男"],
+        "publishers": ["岩波書店", "中公新書", "講談社現代新書"]
       },
       "生活": {
+        "priority": 4,
         "keywords": ["料理", "レシピ", "ベーキング", "健康", "フィットネス", "運動", "ヨガ", "ダイエット", "美容", "スキンケア", "ファッション", "インテリア", "ガーデニング", "ペット", "旅行", "写真", "ハンドメイド", "DIY", "子育て", "家族", "人間関係", "コミュニケーション", "仕事術", "成功", "自己啓発", "時間管理", "生産性"],
-        "priority": 4
+        "high_priority_keywords": ["料理本", "レシピ集", "ダイエット方法"],
+        "synonyms": {
+          "料理": ["クッキング"],
+          "ダイエット": ["痩せる", "減量"]
+        },
+        "exclude_keywords": ["小説", "プログラミング"],
+        "authors": [],
+        "publishers": ["主婦の友社", "朝日新聞出版"]
       },
       "科学": {
+        "priority": 5,
         "keywords": ["科学", "物理", "化学", "生物", "数学", "天文学", "地理学", "医学", "人体", "自然", "環境", "生態", "進化", "遺伝子", "量子", "相対性理論", "宇宙", "テクノロジー", "発明", "探検", "百科事典"],
-        "priority": 5
+        "high_priority_keywords": ["量子力学", "相対性理論", "宇宙論"],
+        "synonyms": {
+          "物理": ["物理学"],
+          "宇宙": ["天文学"]
+        },
+        "exclude_keywords": ["小説", "プログラミング"],
+        "authors": [],
+        "publishers": ["岩波書店", "紀伊國屋書店"]
       }
     }
   },
   "default_category": "其他",
-  "text_detection_chars": 2000
+  "text_detection_chars": 3000
 }

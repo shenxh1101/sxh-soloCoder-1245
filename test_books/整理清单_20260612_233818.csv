@@ -1,3 +1,0 @@
-﻿🚩复核标签,文件名,原路径,新路径,文件类型,文件大小,识别语言,语言代码,语言置信度,语言判断来源,二级分类,分类置信度,分类依据关键词,书名,作者,出版社,冲突状态,移动状态,错误信息
-低语言置信度,py_ml_intro.pdf,D:\code\TraeProjects\1245\test_books\py_ml_intro.pdf,,pdf,24 B,英文,en,0.1,filename:en(0.10),Technology,0.567,"python≈pyx1, ai≈mlx1",,,,none,pending,
-低语言置信度|低分类置信度,DB_design.epub,D:\code\TraeProjects\1245\test_books\DB_design.epub,,epub,17 B,英文,en,0.1,filename:en(0.10),Technology,0.284,database≈dbx1,,,,none,pending,

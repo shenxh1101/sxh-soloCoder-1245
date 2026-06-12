@@ -1,0 +1,5 @@
+﻿🚩复核标签,文件名,原路径,新路径,文件类型,文件大小,识别语言,语言代码,语言置信度,语言判断来源,二级分类,分类置信度,分类依据关键词,书名,作者,出版社,冲突状态,移动状态,重复组,重复状态,重复原因,人工修改,错误信息
+低语言置信度,三体全集.pdf,D:\code\TraeProjects\1245\test_books\三体全集.pdf,D:\code\TraeProjects\1245\test_books\中文\小说\三体全集.pdf,pdf,29 B,中文,zh,0.25,filename:zh(0.25),小说,15.0,★三体x1,,,,none,planned,,unique,,,
+低语言置信度|低分类置信度,数据库设计.epub,D:\code\TraeProjects\1245\test_books\数据库设计.epub,D:\code\TraeProjects\1245\test_books\中文\技术\数据库设计.epub,epub,33 B,中文,zh,0.25,filename:zh(0.25),技术,0.36,数据库x1,,,,none,planned,,unique,,,
+低语言置信度|重复书,Python入门_副本.pdf,D:\code\TraeProjects\1245\test_books\Python入门_副本.pdf,D:\code\TraeProjects\1245\test_books\中文\技术\Python入门_副本.pdf,pdf,44 B,中文,zh,0.1,filename:zh(0.10),技术,1.539,"Pythonx1, 入门x1, Python≈pythonx1, Python≈pyx1",,,,none,planned,DUP001,duplicate,内容完全一致(MD5相同),,
+低语言置信度|重复书,Python入门.pdf,D:\code\TraeProjects\1245\test_books\Python入门.pdf,D:\code\TraeProjects\1245\test_books\英文\Technology\Python入门.pdf,pdf,44 B,英文,en,0.075,filename:en(0.08),Technology,0.779,"pythonx1, python≈pyx1",,,,none,planned,DUP001,primary,内容完全一致(MD5相同),,

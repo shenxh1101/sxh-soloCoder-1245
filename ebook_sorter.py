@@ -85,6 +85,10 @@ class BookMetadata:
     md5_hash: str = ''
     review_flags: List[str] = field(default_factory=list)
     operation_id: str = ''
+    duplicate_group: str = ''
+    duplicate_status: str = 'unique'
+    duplicate_reason: str = ''
+    manual_override: bool = False
 
 
 def detect_language_by_chars(text):
@@ -743,6 +747,148 @@ def format_size(size_bytes):
         return f"{size_bytes / (1024 * 1024 * 1024):.2f} GB"
 
 
+def compute_file_md5(filepath, max_mb=10):
+    """计算文件MD5（默认只读前10MB以提高速度）"""
+    try:
+        md5 = hashlib.md5()
+        size = os.path.getsize(filepath)
+        read_bytes = min(size, max_mb * 1024 * 1024)
+        with open(filepath, 'rb') as f:
+            md5.update(f.read(read_bytes))
+            if size > max_mb * 1024 * 1024:
+                f.seek(-1024, 2)
+                md5.update(f.read(1024))
+        return md5.hexdigest()
+    except Exception:
+        return ''
+
+
+def _filename_similarity(name1, name2):
+    """计算两个文件名的相似度（0-1），用于重复书判断"""
+    n1 = re.sub(r'[._\-\s]+', ' ', os.path.splitext(name1)[0]).lower().strip()
+    n2 = re.sub(r'[._\-\s]+', ' ', os.path.splitext(name2)[0]).lower().strip()
+    if n1 == n2:
+        return 1.0
+    if n1 in n2 or n2 in n1:
+        min_len = min(len(n1), len(n2))
+        max_len = max(len(n1), len(n2))
+        if max_len == 0:
+            return 0
+        return min_len / max_len * 0.85
+    set1 = set(n1.split())
+    set2 = set(n2.split())
+    if not set1 or not set2:
+        return 0
+    intersection = len(set1 & set2)
+    union = len(set1 | set2)
+    return intersection / union if union > 0 else 0
+
+
+def detect_duplicate_books(books, name_threshold=0.75, size_tolerance=0.01):
+    """
+    检测重复电子书
+    优先级：内容MD5 > 文件大小 + 文件名相似度
+    
+    Args:
+        books: BookMetadata 列表
+        name_threshold: 文件名相似度阈值 (0-1)
+        size_tolerance: 文件大小容差比例 (默认1%内算相同大小)
+    
+    Returns:
+        (重复组数量, 重复检测统计)
+    """
+    if len(books) < 2:
+        return 0
+
+    size_groups = defaultdict(list)
+    for meta in books:
+        if meta.file_size > 0:
+            size_key = meta.file_size
+            size_groups[size_key].append(meta)
+
+    group_id = 0
+    grouped = set()
+    md5_cache = {}
+
+    for size, group in size_groups.items():
+        if len(group) < 2:
+            continue
+
+        for meta in group:
+            if meta.file_path in md5_cache:
+                continue
+            md5_val = compute_file_md5(meta.file_path)
+            md5_cache[meta.file_path] = md5_val
+            meta.md5_hash = md5_val
+
+        md5_groups = defaultdict(list)
+        for meta in group:
+            md5 = md5_cache.get(meta.file_path, '')
+            if md5:
+                md5_groups[md5].append(meta)
+
+        for md5, md5_group in md5_groups.items():
+            if len(md5_group) >= 2:
+                group_id += 1
+                group_name = f'DUP{group_id:03d}'
+                primary = min(md5_group, key=lambda m: (os.path.getmtime(m.file_path), m.file_path))
+                for meta in md5_group:
+                    if id(meta) in grouped:
+                        continue
+                    grouped.add(id(meta))
+                    meta.duplicate_group = group_name
+                    meta.duplicate_status = 'primary' if meta is primary else 'duplicate'
+                    meta.duplicate_reason = '内容完全一致(MD5相同)'
+
+        remaining = [m for m in group if m.duplicate_status == 'unique']
+        if len(remaining) < 2:
+            continue
+
+        for i in range(len(remaining)):
+            if remaining[i].duplicate_status != 'unique':
+                continue
+            for j in range(i + 1, len(remaining)):
+                if remaining[j].duplicate_status != 'unique':
+                    continue
+                sim = _filename_similarity(
+                    os.path.basename(remaining[i].file_path),
+                    os.path.basename(remaining[j].file_path)
+                )
+                if sim >= name_threshold:
+                    if remaining[i].duplicate_status == 'unique':
+                        group_id += 1
+                        group_name = f'DUP{group_id:03d}'
+                        remaining[i].duplicate_group = group_name
+                        remaining[i].duplicate_status = 'primary'
+                        remaining[i].duplicate_reason = f'文件大小相同+文件名相似({sim:.0%})'
+                    remaining[j].duplicate_group = remaining[i].duplicate_group
+                    remaining[j].duplicate_status = 'duplicate'
+                    remaining[j].duplicate_reason = f'文件大小相同+文件名相似({sim:.0%})'
+
+    return group_id
+
+
+def print_duplicates_summary(books):
+    """打印重复书检测摘要"""
+    dup_groups = defaultdict(list)
+    for meta in books:
+        if meta.duplicate_group:
+            dup_groups[meta.duplicate_group].append(meta)
+
+    if not dup_groups:
+        return
+
+    print(f"\n🔍 重复书检测: 发现 {len(dup_groups)} 组重复")
+    for group_id, group in sorted(dup_groups.items()):
+        primary = next((m for m in group if m.duplicate_status == 'primary'), group[0])
+        dup_count = len(group) - 1
+        reason = group[0].duplicate_reason
+        print(f"  [{group_id}] {os.path.basename(primary.file_path)}  -  重复 {dup_count} 本 ({reason})")
+        for m in group:
+            if m is not primary:
+                print(f"       - {os.path.basename(m.file_path)}  ({format_size(m.file_size)})")
+
+
 def generate_statistics(books, rules):
     """生成统计报表"""
     lang_stats = defaultdict(lambda: {'count': 0, 'size': 0, 'categories': defaultdict(lambda: {'count': 0, 'size': 0})})
@@ -858,11 +1004,12 @@ def undo_operations(output_dir, operation_id=None):
         operation_id: 指定撤销某次操作，None 则撤销最近一次
     
     Returns:
-        (成功数量, 失败列表, 跳过列表, 撤销的操作ID)
+        (成功数量, 失败列表, 跳过列表, 撤销的操作ID, 所有结果列表)
+        所有结果列表每项包含: status(成功/失败/跳过), filename, original_path, current_path, final_path, reason
     """
     all_ops = load_operation_log(output_dir)
     if not all_ops:
-        return (0, [], [{'file': '-', 'reason': '没有找到任何操作记录'}], None)
+        return (0, [], [{'file': '-', 'reason': '没有找到任何操作记录'}], None, [])
 
     ops_to_undo = []
     actual_undo_id = None
@@ -870,7 +1017,7 @@ def undo_operations(output_dir, operation_id=None):
         ops_to_undo = [op for op in all_ops if op['operation_id'] == operation_id]
         actual_undo_id = operation_id
         if not ops_to_undo:
-            return (0, [], [{'file': '-', 'reason': f'没有找到操作ID: {operation_id}'}], operation_id)
+            return (0, [], [{'file': '-', 'reason': f'没有找到操作ID: {operation_id}'}], operation_id, [])
     else:
         if all_ops:
             actual_undo_id = all_ops[-1]['operation_id']
@@ -879,6 +1026,7 @@ def undo_operations(output_dir, operation_id=None):
     success_count = 0
     failed = []
     skipped = []
+    all_results = []
 
     ops_to_undo.reverse()
 
@@ -888,35 +1036,59 @@ def undo_operations(output_dir, operation_id=None):
         src = op['current_path']
         dst = op['original_path']
         filename = op['filename']
+        original_dst = dst
+
+        result_entry = {
+            'filename': filename,
+            'original_path': original_dst,
+            'current_path': src,
+            'final_path': '',
+        }
 
         if not os.path.exists(src):
+            reason = f'源文件不存在: {src}'
             skipped.append({
                 'file': filename,
-                'reason': f'源文件不存在: {src}',
+                'reason': reason,
                 'original_path': dst,
                 'src': src,
             })
+            result_entry['status'] = '跳过'
+            result_entry['final_path'] = ''
+            result_entry['reason'] = reason
+            all_results.append(result_entry)
             continue
 
         if os.path.abspath(src) == os.path.abspath(dst):
+            reason = '文件就在原位置，无需移动'
             skipped.append({
                 'file': filename,
-                'reason': '文件就在原位置，无需移动',
+                'reason': reason,
                 'original_path': dst,
                 'src': src,
             })
+            result_entry['status'] = '跳过'
+            result_entry['final_path'] = dst
+            result_entry['reason'] = reason
+            all_results.append(result_entry)
             continue
 
+        was_renamed = False
         if os.path.exists(dst):
             try:
                 dst_size = os.path.getsize(dst)
                 if dst_size == op['file_size']:
+                    reason = f'目标路径已存在同名同大小文件，可能已被还原: {dst}'
                     skipped.append({
                         'file': filename,
-                        'reason': f'目标路径已存在同名同大小文件，可能已被还原: {dst}',
+                        'reason': reason,
                         'original_path': dst,
                         'src': src,
                     })
+                    result_entry['status'] = '跳过'
+                    result_entry['final_path'] = dst
+                    result_entry['reason'] = reason
+                    all_results.append(result_entry)
                     continue
                 else:
                     base, ext = os.path.splitext(dst)
@@ -924,6 +1096,7 @@ def undo_operations(output_dir, operation_id=None):
                     while os.path.exists(dst):
                         dst = f"{base}_restored_{counter}{ext}"
                         counter += 1
+                    was_renamed = True
             except Exception:
                 pass
 
@@ -931,14 +1104,26 @@ def undo_operations(output_dir, operation_id=None):
             os.makedirs(os.path.dirname(dst), exist_ok=True)
             shutil.move(src, dst)
             success_count += 1
+            result_entry['status'] = '成功'
+            result_entry['final_path'] = dst
+            if was_renamed:
+                result_entry['reason'] = f'原路径被占用，已改名还原: {os.path.basename(dst)}'
+            else:
+                result_entry['reason'] = '已还原到原路径'
+            all_results.append(result_entry)
             remaining_ops = [op2 for op2 in remaining_ops if op2['current_path'] != op['current_path']]
         except Exception as e:
+            reason = str(e)
             failed.append({
                 'file': filename,
-                'reason': str(e),
+                'reason': reason,
                 'src': src,
                 'dst': dst,
             })
+            result_entry['status'] = '失败'
+            result_entry['final_path'] = src
+            result_entry['reason'] = reason
+            all_results.append(result_entry)
 
     log_path = os.path.join(output_dir, OPERATION_LOG_FILENAME)
     try:
@@ -947,7 +1132,7 @@ def undo_operations(output_dir, operation_id=None):
     except Exception as e:
         print(f"更新操作记录失败: {e}")
 
-    return (success_count, failed, skipped, actual_undo_id)
+    return (success_count, failed, skipped, actual_undo_id, all_results)
 
 
 def _dict_to_meta(d):
@@ -998,6 +1183,10 @@ def _meta_to_plan_dict(meta, lang_folders):
         'language_sources_raw': {k: list(v) for k, v in meta.language_sources.items()},
         'category_keywords_hit_raw': dict(meta.category_keywords_hit),
         'text_preview': meta.text_preview[:200] if meta.text_preview else '',
+        'duplicate_group': meta.duplicate_group,
+        'duplicate_status': meta.duplicate_status,
+        'duplicate_reason': meta.duplicate_reason,
+        'manual_override': meta.manual_override,
     }
 
 
@@ -1065,6 +1254,10 @@ def restore_books_from_plan(plan_data):
         meta.move_status = b.get('move_status', 'pending')
         meta.review_flags = b.get('review_flags', [])
         meta.text_preview = b.get('text_preview', '')
+        meta.duplicate_group = b.get('duplicate_group', '')
+        meta.duplicate_status = b.get('duplicate_status', 'unique')
+        meta.duplicate_reason = b.get('duplicate_reason', '')
+        meta.manual_override = b.get('manual_override', False)
 
         lang_sources_raw = b.get('language_sources_raw', {})
         if lang_sources_raw:
@@ -1138,6 +1331,211 @@ def print_plan_summary(plan_data):
     print(f"\n{'═' * 60}")
 
 
+def _filter_books(books, filter_type, filter_value, rules=None):
+    """按条件筛选书籍"""
+    result = []
+    for meta in books:
+        if filter_type == 'lang' and meta.detected_language == filter_value:
+            result.append(meta)
+        elif filter_type == 'category' and meta.category == filter_value:
+            result.append(meta)
+        elif filter_type == 'low_conf' and meta.language_confidence < 0.4 and meta.detected_language != 'unknown':
+            result.append(meta)
+        elif filter_type == 'conflict' and meta.conflict_status != 'none':
+            result.append(meta)
+        elif filter_type == 'unknown' and meta.detected_language == 'unknown':
+            result.append(meta)
+        elif filter_type == 'uncategorized' and meta.category == '其他':
+            result.append(meta)
+        elif filter_type == 'duplicate' and meta.duplicate_status != 'unique':
+            result.append(meta)
+        elif filter_type == 'review' and meta.review_flags:
+            result.append(meta)
+    return result
+
+
+def apply_manual_change(books, filter_type, filter_value, field, new_value, rules=None):
+    """批量修改筛选出的书籍的语言或分类"""
+    targets = _filter_books(books, filter_type, filter_value, rules)
+    changed_count = 0
+    for meta in targets:
+        if field == 'language':
+            meta.detected_language = new_value
+            meta.language_confidence = 1.0
+            meta.language_sources = {'人工指定': (new_value, 1.0)}
+            meta.manual_override = True
+        elif field == 'category':
+            meta.category = new_value
+            meta.category_confidence = 10.0
+            meta.category_keywords_hit = {new_value: ['人工指定']}
+            meta.manual_override = True
+        meta.target_path = ''
+        meta.review_flags = _get_review_flags(meta)
+        changed_count += 1
+    return changed_count, targets
+
+
+def interactive_review(books, rules):
+    """
+    交互式复核流程：筛选 + 批量修改
+    
+    Returns:
+        bool: 是否需要重新生成计划 (有修改则返回 True)
+    """
+    lang_folders = rules.get('language_folders', {})
+    categories = list(rules.get('categories', {}).keys())
+    if 'default_category' in rules:
+        categories.append(rules['default_category'])
+    categories = list(set(categories))
+
+    has_changes = False
+
+    print(f"\n{'═' * 60}")
+    print("📝 交互式复核模式")
+    print(f"{'─' * 60}")
+    print("  可用筛选命令:")
+    print("    lang <代码>       - 按语言筛选 (zh/en/ja/ko/unknown)")
+    print("    cat <分类名>     - 按分类筛选")
+    print("    low_conf         - 低语言置信度")
+    print("    conflict         - 有冲突的文件")
+    print("    unknown          - 未知语言")
+    print("    uncategorized    - 未分类(其他)")
+    print("    duplicate        - 重复书")
+    print("    review           - 所有需复核的")
+    print("    list             - 列出当前筛选结果")
+    print("  修改命令 (需先筛选):")
+    print("    setlang <代码>   - 批量修改语言")
+    print("    setcat <分类名>  - 批量修改分类")
+    print("  其他命令:")
+    print("    stats            - 显示当前统计")
+    print("    done             - 完成复核，继续执行")
+    print("    abort            - 取消所有修改")
+    print(f"{'═' * 60}")
+
+    current_filter = None
+    current_filter_val = None
+    current_count = len(books)
+
+    while True:
+        try:
+            cmd_str = input(f"\n[{current_count}本已选中] 请输入命令 (? 查看帮助): ").strip()
+        except (EOFError, KeyboardInterrupt):
+            print("\n用户中断，保持当前修改")
+            return has_changes
+
+        if not cmd_str:
+            continue
+
+        parts = cmd_str.split(None, 1)
+        cmd = parts[0].lower()
+        arg = parts[1] if len(parts) > 1 else ''
+
+        if cmd in ('?', 'help', '帮助'):
+            print("  筛选: lang/cat/low_conf/conflict/unknown/uncategorized/duplicate/review")
+            print("  修改: setlang <语言代码> / setcat <分类名>")
+            print("  其他: list / stats / done / abort")
+            continue
+
+        if cmd == 'stats':
+            lang_stats = defaultdict(int)
+            cat_stats = defaultdict(int)
+            review_count = 0
+            dup_count = 0
+            for m in books:
+                ln = lang_folders.get(m.detected_language, m.detected_language)
+                lang_stats[ln] += 1
+                cat_stats[m.category or '其他'] += 1
+                if m.review_flags:
+                    review_count += 1
+                if m.duplicate_status != 'unique':
+                    dup_count += 1
+            print(f"\n  📊 当前统计:")
+            print(f"    总数: {len(books)}")
+            print(f"    需复核: {review_count}")
+            print(f"    重复书: {dup_count}")
+            print(f"    语言分布: " + ', '.join(f"{k}={v}" for k, v in sorted(lang_stats.items(), key=lambda x: -x[1])))
+            print(f"    分类分布: " + ', '.join(f"{k}={v}" for k, v in sorted(cat_stats.items(), key=lambda x: -x[1])))
+            continue
+
+        if cmd in ('lang', 'low_conf', 'conflict', 'unknown', 'uncategorized', 'duplicate', 'review'):
+            if cmd == 'lang':
+                if not arg:
+                    print("  用法: lang <zh|en|ja|ko|unknown>")
+                    continue
+                current_filter = 'lang'
+                current_filter_val = arg
+            elif cmd == 'cat':
+                if not arg:
+                    print("  用法: cat <分类名>")
+                    continue
+                current_filter = 'category'
+                current_filter_val = arg
+            else:
+                current_filter = cmd
+                current_filter_val = ''
+
+            filtered = _filter_books(books, current_filter, current_filter_val, rules)
+            current_count = len(filtered)
+            print(f"  筛选结果: {current_count} 本书")
+            for i, m in enumerate(filtered[:15], 1):
+                fn = os.path.basename(m.file_path)
+                print(f"    [{i}] {fn}  | 语言:{m.detected_language} 分类:{m.category or '其他'}")
+            if len(filtered) > 15:
+                print(f"    ... 还有 {len(filtered) - 15} 本")
+            continue
+
+        if cmd == 'list':
+            if not current_filter:
+                print("  请先使用筛选命令")
+                continue
+            filtered = _filter_books(books, current_filter, current_filter_val, rules)
+            for i, m in enumerate(filtered[:30], 1):
+                fn = os.path.basename(m.file_path)
+                flags = '|'.join(m.review_flags) if m.review_flags else ''
+                print(f"  [{i}] {fn}")
+                print(f"      语言:{m.detected_language}({m.language_confidence:.2f})  分类:{m.category or '其他'}  🚩:{flags}")
+            if len(filtered) > 30:
+                print(f"  ... 还有 {len(filtered) - 30} 本")
+            continue
+
+        if cmd == 'setlang':
+            if not current_filter:
+                print("  请先使用筛选命令选定要修改的书")
+                continue
+            if not arg:
+                print("  用法: setlang <语言代码> (zh/en/ja/ko/unknown)")
+                continue
+            count, targets = apply_manual_change(books, current_filter, current_filter_val, 'language', arg, rules)
+            print(f"  ✅ 已将 {count} 本书的语言修改为 {arg}")
+            has_changes = True
+            current_count = len(targets)
+            continue
+
+        if cmd == 'setcat':
+            if not current_filter:
+                print("  请先使用筛选命令选定要修改的书")
+                continue
+            if not arg:
+                print(f"  用法: setcat <分类名>  可选: {', '.join(categories[:8])}...")
+                continue
+            count, targets = apply_manual_change(books, current_filter, current_filter_val, 'category', arg, rules)
+            print(f"  ✅ 已将 {count} 本书的分类修改为 {arg}")
+            has_changes = True
+            current_count = len(targets)
+            continue
+
+        if cmd == 'done':
+            return has_changes
+
+        if cmd == 'abort':
+            confirm = input("确定取消所有修改？(y/N): ").strip().lower()
+            if confirm in ('y', 'yes'):
+                return False
+            continue
+
+        print(f"  未知命令: {cmd}，输入 ? 查看帮助")
+
+
 def _get_review_flags(meta):
     """获取需要复核的标签"""
     flags = []
@@ -1153,6 +1551,10 @@ def _get_review_flags(meta):
         flags.append('文件冲突')
     if meta.move_status == 'failed':
         flags.append('移动失败')
+    if meta.duplicate_status != 'unique':
+        flags.append('重复书')
+    if meta.manual_override:
+        flags.append('人工修改')
     filename_lang, _ = detect_language_by_filename(os.path.basename(meta.file_path))
     if filename_lang == 'en' and meta.detected_language == 'zh':
         flags.append('英文件名中内容')
@@ -1211,6 +1613,10 @@ def export_manifest(books, output_dir, rules, format='both'):
             '出版社': meta.publisher or '',
             '冲突状态': meta.conflict_status,
             '移动状态': meta.move_status,
+            '重复组': meta.duplicate_group or '',
+            '重复状态': meta.duplicate_status,
+            '重复原因': meta.duplicate_reason or '',
+            '人工修改': '是' if meta.manual_override else '',
             '错误信息': meta.error_msg,
         }
         rows.append(row)
@@ -1247,6 +1653,7 @@ def export_manifest(books, output_dir, rules, format='both'):
                     '待处理数量': sum(1 for m in books if m.detected_language == 'unknown'),
                     '低置信度数量': sum(1 for m in books if m.language_confidence < 0.4 and m.detected_language != 'unknown'),
                     '未分类数量': sum(1 for m in books if m.category == '其他'),
+                    '重复书数量': sum(1 for m in books if m.duplicate_status != 'unique'),
                 }
             }
             for meta in books:
@@ -1265,56 +1672,51 @@ def export_manifest(books, output_dir, rules, format='both'):
     return exported
 
 
-def export_undo_manifest(output_dir, operation_id, success_count, failed, skipped):
-    """导出撤销操作结果清单"""
+def export_undo_manifest(output_dir, operation_id, all_results, success_count, failed, skipped):
+    """导出撤销操作结果清单（逐本列出所有结果）"""
     os.makedirs(output_dir, exist_ok=True)
     timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
     csv_path = os.path.join(output_dir, f'撤销结果_{operation_id}_{timestamp}.csv')
     json_path = os.path.join(output_dir, f'撤销结果_{operation_id}_{timestamp}.json')
 
     rows = []
-    for item in failed:
+    status_order = {'失败': 0, '跳过': 1, '成功': 2}
+    for r in all_results:
         rows.append({
-            '状态': '失败',
-            '文件名': item.get('file', ''),
-            '当前位置': item.get('src', ''),
-            '目标还原位置': item.get('dst', ''),
-            '原因': item.get('reason', ''),
+            '状态': r.get('status', ''),
+            '文件名': r.get('filename', ''),
+            '原路径(移动前)': r.get('original_path', ''),
+            '当前位置(移动后)': r.get('current_path', ''),
+            '最终还原到': r.get('final_path', ''),
+            '说明': r.get('reason', ''),
         })
-    for item in skipped:
-        rows.append({
-            '状态': '跳过',
-            '文件名': item.get('file', ''),
-            '当前位置': item.get('src', item.get('original_path', '')),
-            '目标还原位置': item.get('original_path', ''),
-            '原因': item.get('reason', ''),
-        })
-    rows.sort(key=lambda r: r['状态'])
+    rows.sort(key=lambda r: (status_order.get(r['状态'], 9), r['文件名']))
 
-    if rows:
-        try:
+    try:
+        if rows:
             with open(csv_path, 'w', encoding='utf-8-sig', newline='') as f:
-                writer = csv.DictWriter(f, fieldnames=['状态', '文件名', '当前位置', '目标还原位置', '原因'])
+                writer = csv.DictWriter(f, fieldnames=['状态', '文件名', '原路径(移动前)', '当前位置(移动后)', '最终还原到', '说明'])
                 writer.writeheader()
                 writer.writerows(rows)
-        except Exception as e:
-            print(f"导出撤销CSV清单失败: {e}")
+    except Exception as e:
+        print(f"导出撤销CSV清单失败: {e}")
 
-        try:
-            with open(json_path, 'w', encoding='utf-8') as f:
-                json.dump({
-                    '操作类型': '撤销',
-                    '撤销的操作ID': operation_id,
-                    '生成时间': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                    '统计': {
-                        '成功还原': success_count,
-                        '失败': len(failed),
-                        '跳过': len(skipped),
-                    },
-                    '明细': rows,
-                }, f, ensure_ascii=False, indent=2)
-        except Exception as e:
-            print(f"导出撤销JSON清单失败: {e}")
+    try:
+        with open(json_path, 'w', encoding='utf-8') as f:
+            json.dump({
+                '操作类型': '撤销',
+                '撤销的操作ID': operation_id,
+                '生成时间': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                '统计': {
+                    '总文件数': len(all_results),
+                    '成功还原': success_count,
+                    '失败': len(failed),
+                    '跳过': len(skipped),
+                },
+                '明细': rows,
+            }, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"导出撤销JSON清单失败: {e}")
 
     return csv_path, json_path
 
@@ -1783,6 +2185,12 @@ def load_rules(config_path):
         return json.load(f)
 
 
+DUPLICATE_SKIP = 'skip'
+DUPLICATE_KEEP_BOTH = 'keep_both'
+DUPLICATE_MERGE = 'merge'
+VALID_DUPLICATE_STRATEGIES = [DUPLICATE_SKIP, DUPLICATE_KEEP_BOTH, DUPLICATE_MERGE]
+
+
 def main():
     parser = argparse.ArgumentParser(
         description='电子书分类整理工具 v3.0',
@@ -1791,6 +2199,9 @@ def main():
 示例:
   # 生成整理计划（不移动文件）
   python ebook_sorter.py "D:\\书库" --plan-only
+  
+  # 交互式复核计划（筛选+批量修改分类/语言）
+  python ebook_sorter.py "D:\\书库" --plan-only --interactive
   
   # 确认并执行上次生成的计划
   python ebook_sorter.py "D:\\书库" --confirm-plan
@@ -1804,8 +2215,8 @@ def main():
   # 撤销指定操作
   python ebook_sorter.py "D:\\书库" --undo-id 20260612_153000
   
-  # 指定冲突处理策略
-  python ebook_sorter.py "D:\\书库" --conflict skip
+  # 指定冲突和重复书处理策略
+  python ebook_sorter.py "D:\\书库" --conflict skip --duplicate keep_both
         '''
     )
     parser.add_argument('source_dir', nargs='?', help='源文件夹路径')
@@ -1817,6 +2228,7 @@ def main():
     parser.add_argument('--no-manifest', action='store_true', help='不导出整理清单')
     parser.add_argument('--plan-only', action='store_true', help='仅生成整理计划，不执行，待确认后手动执行')
     parser.add_argument('--confirm-plan', action='store_true', help='确认执行上次生成的计划')
+    parser.add_argument('-i', '--interactive', action='store_true', help='交互式复核模式，生成计划后可筛选修改')
     parser.add_argument('--y', '--yes', action='store_true', dest='auto_confirm', help='自动确认所有提示')
     parser.add_argument('--undo', action='store_true', help='撤销最近一次整理操作，还原到原路径')
     parser.add_argument('--undo-id', help='撤销指定ID的操作（见操作记录）')
@@ -1825,6 +2237,17 @@ def main():
         choices=VALID_CONFLICT_STRATEGIES,
         default=CONFLICT_RENAME,
         help=f'同名文件冲突处理策略: skip=跳过, overwrite=覆盖, rename=自动重命名 (默认: {CONFLICT_RENAME})'
+    )
+    parser.add_argument(
+        '--duplicate',
+        choices=VALID_DUPLICATE_STRATEGIES,
+        default=DUPLICATE_KEEP_BOTH,
+        help=f'重复书处理策略: skip=只保留一份, keep_both=保留两份都移动, merge=合并到同目录 (默认: keep_both)'
+    )
+    parser.add_argument(
+        '--no-duplicate-check',
+        action='store_true',
+        help='跳过重复书检测'
     )
     parser.add_argument(
         '--manifest-format',
@@ -1841,26 +2264,26 @@ def main():
             target_dir = os.getcwd()
         print(f"📂 操作目录: {target_dir}")
         print(f"↩️  正在撤销{'指定' if args.undo_id else '最近一次'}操作...")
-        success, failed, skipped, actual_undo_id = undo_operations(target_dir, args.undo_id)
+        success, failed, skipped, actual_undo_id, all_results = undo_operations(target_dir, args.undo_id)
         print(f"\n{'═' * 60}")
         print(f"↩️  撤销完成！(操作ID: {actual_undo_id or '未知'})")
         print(f"{'─' * 60}")
-        print(f"  ✅ 成功还原: {success} 个文件")
+        print(f"  📖 操作总数:     {len(all_results)}")
+        print(f"  ✅ 成功还原:     {success} 个文件")
         if skipped:
-            print(f"  ⏭️  跳过: {len(skipped)} 个文件")
-            for s in skipped[:10]:
-                print(f"     - {s['file']}: {s['reason']}")
-            if len(skipped) > 10:
-                print(f"     ... 还有 {len(skipped) - 10} 个")
+            print(f"  ⏭️  跳过:         {len(skipped)} 个文件")
         if failed:
-            print(f"  ❌ 失败: {len(failed)} 个文件")
-            for f in failed[:10]:
-                print(f"     - {f['file']}: {f['reason']}")
-            if len(failed) > 10:
-                print(f"     ... 还有 {len(failed) - 10} 个")
+            print(f"  ❌ 失败:         {len(failed)} 个文件")
+        if all_results and len(all_results) <= 30:
+            print(f"\n  📋 逐本结果:")
+            for r in all_results:
+                status_icon = '✅' if r['status'] == '成功' else ('⏭️ ' if r['status'] == '跳过' else '❌')
+                print(f"     {status_icon} {r['filename']}  ->  {r['status']}")
+                if r.get('reason'):
+                    print(f"        {r['reason']}")
 
-        if actual_undo_id and (failed or skipped):
-            csv_p, json_p = export_undo_manifest(target_dir, actual_undo_id, success, failed, skipped)
+        if actual_undo_id and all_results:
+            csv_p, json_p = export_undo_manifest(target_dir, actual_undo_id, all_results, success, failed, skipped)
             if os.path.exists(csv_p):
                 print(f"\n  📄 撤销结果清单 (CSV): {csv_p}")
             if os.path.exists(json_p):
@@ -2018,15 +2441,46 @@ def main():
             print(f"  [{', '.join(status_parts)}]")
 
     if not skip_meta_detect:
-        print(f"\n📋 正在生成整理计划...")
-        plan_path, plan_data, _ = generate_plan(books_meta, output_dir, rules, conflict_strategy=args.conflict)
+        if not args.no_duplicate_check and len(books_meta) > 1:
+            print(f"\n� 正在检测重复书...")
+            dup_count = detect_duplicate_books(books_meta)
+            if dup_count > 0:
+                print_duplicates_summary(books_meta)
+            else:
+                print(f"  未发现重复书")
+
+            if args.duplicate == DUPLICATE_SKIP and dup_count > 0:
+                skip_count = 0
+                for meta in books_meta:
+                    if meta.duplicate_status == 'duplicate':
+                        meta.move_status = 'skipped'
+                        meta.error_msg = f'重复书，已跳过 ({meta.duplicate_group})'
+                        skip_count += 1
+                if skip_count > 0:
+                    print(f"  已按策略跳过 {skip_count} 本重复书 (保留每组主版本)")
+
+        print(f"\n� 正在生成整理计划...")
+        plan_path, plan_data, plan_books = generate_plan(books_meta, output_dir, rules, conflict_strategy=args.conflict)
         print_plan_summary(plan_data)
         print(f"\n📋 计划已保存到: {plan_path}")
+
+        if args.interactive:
+            print(f"\n� 进入交互式复核...")
+            has_changes = interactive_review(plan_books, rules)
+            if has_changes:
+                print(f"\n🔄 有修改，重新生成计划...")
+                plan_path, plan_data, plan_books = generate_plan(plan_books, output_dir, rules, conflict_strategy=args.conflict)
+                print_plan_summary(plan_data)
+                print(f"\n📋 更新后的计划已保存到: {plan_path}")
+            books_meta = plan_books
+
         if args.plan_only:
             print(f"\n💡 使用 --confirm-plan 参数确认并执行此计划")
+            if args.interactive:
+                print(f"   或再次使用 --plan-only --interactive 继续复核修改")
             if not args.no_manifest:
-                print("正在导出预整理清单...")
-                exported = export_manifest(books_meta, output_dir, rules, format=args.manifest_format)
+                print("正在导出预整理清单 (含计划路径)...")
+                exported = export_manifest(plan_books, output_dir, rules, format=args.manifest_format)
                 for exp in exported:
                     print(f"  ✓ {exp}")
             return
@@ -2036,21 +2490,30 @@ def main():
     if not args.no_stats:
         print_statistics(lang_stats, rules, unprocessed)
 
-    if low_confidence_count > 0 or lang_mismatch_count > 0 or needs_review_count > 0:
-        print(f"\n📌 质量提示:")
-        if needs_review_count > 0:
-            print(f"   - 需要人工复核: {needs_review_count} 本 (详见清单的 🚩复核标签 列)")
-        if lang_mismatch_count > 0:
-            print(f"   - 英文文件名但内容是中文: {lang_mismatch_count} 本 (已按正文内容修正为中文分类)")
-        if low_confidence_count > 0:
-            print(f"   - 语言判断置信度较低: {low_confidence_count} 本")
+    review_count = sum(1 for m in books_meta if m.review_flags)
+    low_conf_count = sum(1 for m in books_meta if m.language_confidence < 0.4 and m.detected_language != 'unknown')
+    lang_mismatch = 0
+    for m in books_meta:
+        fl, _ = detect_language_by_filename(os.path.basename(m.file_path))
+        if fl == 'en' and m.detected_language == 'zh':
+            lang_mismatch += 1
 
+    if review_count > 0 or lang_mismatch > 0 or low_conf_count > 0:
+        print(f"\n📌 质量提示:")
+        if review_count > 0:
+            print(f"   - 需要人工复核: {review_count} 本 (详见清单的 🚩复核标签 列)")
+        if lang_mismatch > 0:
+            print(f"   - 英文文件名但内容是中文: {lang_mismatch} 本 (已按正文内容修正为中文分类)")
+        if low_conf_count > 0:
+            print(f"   - 语言判断置信度较低: {low_conf_count} 本")
+
+    html_path = ''
     if not args.no_html:
         print("\n正在生成HTML索引页...")
         html_path = generate_html_index(books_meta, rules, output_dir)
         print(f"  ✓ HTML索引页: {html_path}")
 
-    if not skip_meta_detect and not args.auto_confirm and not args.dry_run:
+    if not args.auto_confirm and not args.dry_run and not args.plan_only:
         try:
             confirm = input(f"\n确认整理以上 {len(books_meta)} 本书？(y/N): ").strip().lower()
             if confirm not in ('y', 'yes'):
@@ -2109,8 +2572,8 @@ def main():
         if skip_n:
             parts.append(f"跳过{skip_n}")
         print(f"  ⚠️  冲突数量:     {len(conflicts)} ({', '.join(parts)})")
-    if needs_review_count > 0:
-        print(f"  🚩 需复核:       {needs_review_count} (打开CSV筛选🚩列即可查看)")
+    if review_count > 0:
+        print(f"  🚩 需复核:       {review_count} (打开CSV筛选🚩列即可查看)")
     if skipped_count:
         print(f"  ⏭️  已跳过:       {skipped_count}")
     if failed_count:

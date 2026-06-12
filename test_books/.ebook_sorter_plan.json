@@ -1,27 +1,150 @@
 {
-  "plan_id": "20260612_233818",
-  "generated_at": "2026-06-12 23:38:18",
+  "plan_id": "20260613_002823",
+  "generated_at": "2026-06-13 00:28:23",
   "source_dir": "D:\\code\\TraeProjects\\1245\\test_books",
   "output_dir": "D:\\code\\TraeProjects\\1245\\test_books",
   "conflict_strategy": "rename",
-  "total_books": 2,
+  "total_books": 4,
   "conflicts_count": 0,
   "conflicts": [],
   "books": [
     {
-      "filename": "DB_design.epub",
-      "original_path": "D:\\code\\TraeProjects\\1245\\test_books\\DB_design.epub",
-      "planned_path": "D:\\code\\TraeProjects\\1245\\test_books\\英文\\Technology\\DB_design.epub",
-      "file_type": "epub",
-      "file_size": 17,
-      "file_size_display": "17 B",
+      "filename": "Python入门.pdf",
+      "original_path": "D:\\code\\TraeProjects\\1245\\test_books\\Python入门.pdf",
+      "planned_path": "D:\\code\\TraeProjects\\1245\\test_books\\英文\\Technology\\Python入门.pdf",
+      "file_type": "pdf",
+      "file_size": 44,
+      "file_size_display": "44 B",
       "detected_language": "en",
       "language_name": "英文",
-      "language_confidence": 0.1,
-      "language_sources": "filename:en(0.10)",
+      "language_confidence": 0.075,
+      "language_sources": "filename:en(0.08)",
       "category": "Technology",
-      "category_confidence": 0.284,
-      "keywords_hit": "database≈dbx1",
+      "category_confidence": 0.779,
+      "keywords_hit": "pythonx1, python≈pyx1",
+      "title": "",
+      "author": "",
+      "publisher": "",
+      "conflict_status": "none",
+      "review_flags": [
+        "低语言置信度",
+        "重复书"
+      ],
+      "move_status": "planned",
+      "language_sources_raw": {
+        "filename": [
+          "en",
+          0.07500000000000001
+        ]
+      },
+      "category_keywords_hit_raw": {
+        "Technology": [
+          "pythonx1",
+          "python≈pyx1"
+        ]
+      },
+      "text_preview": "",
+      "duplicate_group": "DUP001",
+      "duplicate_status": "primary",
+      "duplicate_reason": "内容完全一致(MD5相同)",
+      "manual_override": false
+    },
+    {
+      "filename": "Python入门_副本.pdf",
+      "original_path": "D:\\code\\TraeProjects\\1245\\test_books\\Python入门_副本.pdf",
+      "planned_path": "D:\\code\\TraeProjects\\1245\\test_books\\中文\\技术\\Python入门_副本.pdf",
+      "file_type": "pdf",
+      "file_size": 44,
+      "file_size_display": "44 B",
+      "detected_language": "zh",
+      "language_name": "中文",
+      "language_confidence": 0.1,
+      "language_sources": "filename:zh(0.10)",
+      "category": "技术",
+      "category_confidence": 1.539,
+      "keywords_hit": "Pythonx1, 入门x1, Python≈pythonx1, Python≈pyx1",
+      "title": "",
+      "author": "",
+      "publisher": "",
+      "conflict_status": "none",
+      "review_flags": [
+        "低语言置信度",
+        "重复书"
+      ],
+      "move_status": "planned",
+      "language_sources_raw": {
+        "filename": [
+          "zh",
+          0.1
+        ]
+      },
+      "category_keywords_hit_raw": {
+        "技术": [
+          "Pythonx1",
+          "入门x1",
+          "Python≈pythonx1",
+          "Python≈pyx1"
+        ]
+      },
+      "text_preview": "",
+      "duplicate_group": "DUP001",
+      "duplicate_status": "duplicate",
+      "duplicate_reason": "内容完全一致(MD5相同)",
+      "manual_override": false
+    },
+    {
+      "filename": "三体全集.pdf",
+      "original_path": "D:\\code\\TraeProjects\\1245\\test_books\\三体全集.pdf",
+      "planned_path": "D:\\code\\TraeProjects\\1245\\test_books\\中文\\小说\\三体全集.pdf",
+      "file_type": "pdf",
+      "file_size": 29,
+      "file_size_display": "29 B",
+      "detected_language": "zh",
+      "language_name": "中文",
+      "language_confidence": 0.25,
+      "language_sources": "filename:zh(0.25)",
+      "category": "小说",
+      "category_confidence": 15.0,
+      "keywords_hit": "★三体x1",
+      "title": "",
+      "author": "",
+      "publisher": "",
+      "conflict_status": "none",
+      "review_flags": [
+        "低语言置信度"
+      ],
+      "move_status": "planned",
+      "language_sources_raw": {
+        "filename": [
+          "zh",
+          0.25
+        ]
+      },
+      "category_keywords_hit_raw": {
+        "小说": [
+          "★三体x1"
+        ]
+      },
+      "text_preview": "",
+      "duplicate_group": "",
+      "duplicate_status": "unique",
+      "duplicate_reason": "",
+      "manual_override": false
+    },
+    {
+      "filename": "数据库设计.epub",
+      "original_path": "D:\\code\\TraeProjects\\1245\\test_books\\数据库设计.epub",
+      "planned_path": "D:\\code\\TraeProjects\\1245\\test_books\\中文\\技术\\数据库设计.epub",
+      "file_type": "epub",
+      "file_size": 33,
+      "file_size_display": "33 B",
+      "detected_language": "zh",
+      "language_name": "中文",
+      "language_confidence": 0.25,
+      "language_sources": "filename:zh(0.25)",
+      "category": "技术",
+      "category_confidence": 0.36,
+      "keywords_hit": "数据库x1",
       "title": "",
       "author": "",
       "publisher": "",
@@ -33,52 +156,20 @@
       "move_status": "planned",
       "language_sources_raw": {
         "filename": [
-          "en",
-          0.1
+          "zh",
+          0.25
         ]
       },
       "category_keywords_hit_raw": {
-        "Technology": [
-          "database≈dbx1"
+        "技术": [
+          "数据库x1"
         ]
       },
-      "text_preview": ""
-    },
-    {
-      "filename": "py_ml_intro.pdf",
-      "original_path": "D:\\code\\TraeProjects\\1245\\test_books\\py_ml_intro.pdf",
-      "planned_path": "D:\\code\\TraeProjects\\1245\\test_books\\英文\\Technology\\py_ml_intro.pdf",
-      "file_type": "pdf",
-      "file_size": 24,
-      "file_size_display": "24 B",
-      "detected_language": "en",
-      "language_name": "英文",
-      "language_confidence": 0.1,
-      "language_sources": "filename:en(0.10)",
-      "category": "Technology",
-      "category_confidence": 0.567,
-      "keywords_hit": "python≈pyx1, ai≈mlx1",
-      "title": "",
-      "author": "",
-      "publisher": "",
-      "conflict_status": "none",
-      "review_flags": [
-        "低语言置信度"
-      ],
-      "move_status": "planned",
-      "language_sources_raw": {
-        "filename": [
-          "en",
-          0.1
-        ]
-      },
-      "category_keywords_hit_raw": {
-        "Technology": [
-          "python≈pyx1",
-          "ai≈mlx1"
-        ]
-      },
-      "text_preview": ""
+      "text_preview": "",
+      "duplicate_group": "",
+      "duplicate_status": "unique",
+      "duplicate_reason": "",
+      "manual_override": false
     }
   ]
 }
